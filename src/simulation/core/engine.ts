@@ -1382,6 +1382,18 @@ function applyDemolish(state: WorldState, action: Extract<EditorAction, { type: 
   }
 }
 
+function deficitStressValue(deficit: District["deficits"]["power"]): number {
+  switch (deficit) {
+    case "severe":
+      return 1;
+    case "mild":
+      return 0.5;
+    case "none":
+    default:
+      return 0;
+  }
+}
+
 export const simulationKernel: SimulationKernel = {
   createInitialWorld(seed: string) {
     return createGeneratedWorld(seed);
@@ -1448,6 +1460,12 @@ export const simulationKernel: SimulationKernel = {
         activity: clamp((district.level / 5) * 0.32 + district.satisfaction / 180 + district.operationalEfficiency * 0.35, 0.08, 1),
         blackout: districtHasEvent(state, district, "blackout"),
         onFire: districtHasEvent(state, district, "fire"),
+        overlayMetrics: {
+          traffic: clamp(district.congestionPenalty / 18, 0, 1),
+          power: districtHasEvent(state, district, "blackout") ? 1 : deficitStressValue(district.deficits.power),
+          water: deficitStressValue(district.deficits.water),
+          satisfaction: clamp(district.satisfaction / 100, 0, 1),
+        },
       })),
       utilities: state.utilities.map((utility) => ({
         id: utility.id,

@@ -12,6 +12,8 @@ export function ShellRoute() {
   const tick = useAppStore((state) => state.tick);
   const hudHidden = useAppStore((state) => state.camera.hudHidden);
   const handleShortcut = useAppStore((state) => state.handleShortcut);
+  const autosave = useAppStore((state) => state.autosave);
+  const refreshSaveSlots = useAppStore((state) => state.refreshSaveSlots);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -19,6 +21,17 @@ export function ShellRoute() {
     }, 500);
     return () => window.clearInterval(intervalId);
   }, [tick]);
+
+  useEffect(() => {
+    void refreshSaveSlots();
+  }, [refreshSaveSlots]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void autosave();
+    }, 15000);
+    return () => window.clearInterval(intervalId);
+  }, [autosave]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -39,7 +52,7 @@ export function ShellRoute() {
       {!hudHidden ? <LeftBuildPanel /> : null}
       <main className="world-shell">
         <WorldViewport />
-        <OverlayLegend />
+        {!hudHidden ? <OverlayLegend /> : null}
       </main>
       {!hudHidden ? <RightInspectorPanel /> : null}
       {!hudHidden ? <BottomTimeline /> : null}

@@ -73,6 +73,28 @@ describe("simulation kernel contracts", () => {
     expect(hydrated.districts).toHaveLength(world.districts.length);
   });
 
+  it("derives overlay metrics from canonical district and traffic state", () => {
+    const world = simulationKernel.createInitialWorld("overlay-kernel-seed");
+    const targetDistrict = world.districts[0]!;
+    const targetRoad = world.roadEdges[0]!;
+
+    targetDistrict.satisfaction = 28;
+    targetDistrict.deficits.power = "severe";
+    targetDistrict.deficits.water = "mild";
+    targetDistrict.congestionPenalty = 18;
+    targetRoad.congestion = 0.92;
+
+    const presentation = simulationKernel.derivePresentation(world, "power");
+    const presentationDistrict = presentation.districts.find((district) => district.id === targetDistrict.id);
+    const presentationRoad = presentation.roadEdges.find((edge) => edge.id === targetRoad.id);
+
+    expect(presentationDistrict?.overlayMetrics.power).toBe(1);
+    expect(presentationDistrict?.overlayMetrics.water).toBe(0.5);
+    expect(presentationDistrict?.overlayMetrics.satisfaction).toBeCloseTo(0.28);
+    expect(presentationDistrict?.overlayMetrics.traffic).toBe(1);
+    expect(presentationRoad?.congestion).toBeCloseTo(0.92);
+  });
+
   it("clears occupancy markers when demolishing districts and utilities", () => {
     const initialWorld = simulationKernel.createInitialWorld("demolish-seed");
     const targetDistrict = initialWorld.districts[0]!;

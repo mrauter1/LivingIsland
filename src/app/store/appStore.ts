@@ -17,6 +17,7 @@ import {
   validateZonePlacement,
 } from "../../simulation/core/editing";
 import type {
+  ManualSaveSlotId,
   AppMode,
   CameraState,
   DistrictType,
@@ -30,9 +31,12 @@ import type {
   UtilityType,
   WorldState,
   WorldSummary,
+  SaveSlotId,
+  SaveSlotMeta,
 } from "../../types";
 import { DEFAULT_CAMERA_STATE } from "../../world/camera/contracts";
-import { loadSlot, saveSlot } from "../../persistence/storage";
+import { SAVE_SLOT_IDS } from "../../types";
+import { listSlots, loadSavePreferences, loadSlot, saveSavePreferences, saveSlot } from "../../persistence/storage";
 
 function createDefaultWorld(): WorldState {
   return simulationKernel.createInitialWorld("starter-seed");
@@ -97,6 +101,137 @@ export function summarizeWorld(world: WorldState): WorldSummary {
     averageSatisfaction,
     averageCongestion: world.traffic.averageCongestion,
   };
+}
+
+export interface WorldVitals {
+  population: number;
+  jobs: number;
+  activeEvents: number;
+  power: WorldState["utilitiesState"]["power"];
+  water: WorldState["utilitiesState"]["water"];
+  waste: WorldState["utilitiesState"]["waste"];
+  runtime: WorldState["runtime"];
+  summary: WorldSummary;
+}
+
+export interface AlertSummary {
+  id: string;
+  title: string;
+  detail: string;
+  type: WorldState["events"][number]["type"];
+  remainingTicks: number;
+  affectedDistricts: number;
+  severity: "info" | "warning" | "critical";
+}
+
+export interface SaveSlotEntry {
+  id: SaveSlotId;
+  label: string;
+  updatedAt?: number;
+  occupied: boolean;
+}
+
+function defaultManualSlotLabels(): Record<ManualSaveSlotId, string> {
+  return loadSavePreferences().manualSlotLabels;
+}
+
+function isManualSaveSlotId(slotId: SaveSlotId): slotId is ManualSaveSlotId {
+  return slotId !== "autosave";
+}
+
+function fallbackManualSlotLabel(slotId: ManualSaveSlotId): string {
+  switch (slotId) {
+    case "slot-1":
+      return "Slot One";
+    case "slot-2":
+      return "Slot Two";
+    case "slot-3":
+      return "Slot Three";
+    default:
+      return "Manual Slot";
+  }
+}
+
+export function deriveWorldVitals(world: WorldState): WorldVitals {
+  const summary = summarizeWorld(world);
+  return {
+    population: world.districts.reduce((sum, district) => sum + district.population, 0),
+    jobs: world.districts.reduce((sum, district) => sum + district.jobs, 0),
+    activeEvents: world.events.length,
+    power: world.utilitiesState.power,
+    water: world.utilitiesState.water,
+    waste: world.utilitiesState.waste,
+    runtime: world.runtime,
+    summary,
+  };
+}
+
+function alertSeverityForEvent(type: WorldState["events"][number]["type"]): AlertSummary["severity"] {
+  switch (type) {
+    case "blackout":
+    case "fire":
+      return "critical";
+    case "traffic_collapse":
+    case "storm":
+      return "warning";
+    default:
+      return "info";
+  }
+}
+
+function alertDetailForEvent(event: WorldState["events"][number]): string {
+  switch (event.type) {
+    case "storm":
+      return "Storm conditions are reducing ferry efficiency and citywide satisfaction.";
+    case "blackout":
+      return "District outages are active until power stability recovers.";
+    case "traffic_collapse":
+      return "Road congestion has stayed severe long enough to choke district flow.";
+    case "fire":
+      return "A district fire is suppressing efficiency until the event burns out.";
+    default:
+      return `Affecting ${event.affectedDistrictIds.length} district${event.affectedDistrictIds.length === 1 ? "" : "s"}.`;
+  }
+}
+
+export function deriveRecentAlerts(world: WorldState): AlertSummary[] {
+  return [...world.events]
+    .sort((left, right) => right.startTick - left.startTick)
+    .slice(0, 4)
+    .map((event) => ({
+      id: event.id,
+      title: event.type.replaceAll("_", " "),
+      detail: alertDetailForEvent(event),
+      type: event.type,
+      remainingTicks: Math.max(0, event.endTick - world.clock.tick),
+      affectedDistricts: event.affectedDistrictIds.length,
+      severity: alertSeverityForEvent(event.type),
+    }));
+}
+
+export function deriveSaveSlotEntries(
+  saveSlots: SaveSlotMeta[],
+  manualSlotLabels: Record<ManualSaveSlotId, string>,
+): SaveSlotEntry[] {
+  const slotsById = new Map(saveSlots.map((slot) => [slot.id, slot]));
+  return SAVE_SLOT_IDS.map((slotId) => {
+    const slot = slotsById.get(slotId);
+    if (slotId === "autosave") {
+      return {
+        id: slotId,
+        label: slot?.label ?? "Autosave",
+        updatedAt: slot?.updatedAt,
+        occupied: Boolean(slot),
+      };
+    }
+
+    return {
+      id: slotId,
+      label: manualSlotLabels[slotId] || fallbackManualSlotLabel(slotId),
+      updatedAt: slot?.updatedAt,
+      occupied: Boolean(slot),
+    };
+  });
 }
 
 function speedToMultiplier(speed: SimulationSpeed): number {
@@ -222,6 +357,8 @@ export interface AppStoreState {
   overlay: OverlayKind;
   camera: CameraState;
   persistence: PersistenceStatus;
+  saveSlots: SaveSlotMeta[];
+  manualSlotLabels: Record<ManualSaveSlotId, string>;
   editor: AppStoreEditorState;
   lastFrameMs: number;
   setMode: (mode: AppMode) => void;
@@ -248,7 +385,10 @@ export interface AppStoreState {
   dispatchEditorAction: (action: EditorAction) => void;
   newWorld: (seed: string) => void;
   autosave: () => Promise<void>;
-  loadSave: (slotId: "autosave" | "slot-1" | "slot-2" | "slot-3") => Promise<void>;
+  saveToSlot: (slotId: ManualSaveSlotId) => Promise<void>;
+  loadSave: (slotId: SaveSlotId) => Promise<void>;
+  refreshSaveSlots: () => Promise<void>;
+  setManualSaveSlotLabel: (slotId: ManualSaveSlotId, label: string) => void;
   getWorldSummary: () => WorldSummary;
 }
 
@@ -261,6 +401,8 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   persistence: {
     pending: false,
   },
+  saveSlots: [],
+  manualSlotLabels: defaultManualSlotLabels(),
   editor: emptyEditorState(),
   lastFrameMs: REALTIME_TICK_MS,
 
@@ -313,6 +455,15 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
         activeUtilityType,
       },
     }));
+  },
+
+  setManualSaveSlotLabel(slotId, label) {
+    const nextLabels = {
+      ...get().manualSlotLabels,
+      [slotId]: label,
+    };
+    saveSavePreferences({ manualSlotLabels: nextLabels });
+    set({ manualSlotLabels: nextLabels });
   },
 
   setHoverTile(tile) {
@@ -814,6 +965,9 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   },
 
   async autosave() {
+    if (get().persistence.pending) {
+      return;
+    }
     const { world, camera } = get();
     set((state) => ({
       persistence: { ...state.persistence, pending: true, error: undefined },
@@ -821,7 +975,9 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     try {
       const payload = simulationKernel.serializeSave(world, "autosave", camera);
       await saveSlot(payload);
+      const slots = await listSlots();
       set((state) => ({
+        saveSlots: slots,
         persistence: {
           ...state.persistence,
           pending: false,
@@ -840,7 +996,49 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     }
   },
 
+  async saveToSlot(slotId) {
+    if (get().persistence.pending) {
+      return;
+    }
+    const { world, camera, manualSlotLabels } = get();
+    const label = manualSlotLabels[slotId].trim() || fallbackManualSlotLabel(slotId);
+    set((state) => ({
+      persistence: { ...state.persistence, pending: true, error: undefined },
+    }));
+    try {
+      const payload = simulationKernel.serializeSave(world, slotId, camera);
+      payload.slot.label = label;
+      await saveSlot(payload);
+      const slots = await listSlots();
+      const nextLabels = {
+        ...manualSlotLabels,
+        [slotId]: label,
+      };
+      saveSavePreferences({ manualSlotLabels: nextLabels });
+      set((state) => ({
+        saveSlots: slots,
+        manualSlotLabels: nextLabels,
+        persistence: {
+          ...state.persistence,
+          pending: false,
+          activeSlotId: slotId,
+        },
+      }));
+    } catch (error) {
+      set((state) => ({
+        persistence: {
+          ...state.persistence,
+          pending: false,
+          error: error instanceof Error ? error.message : "Manual save failed",
+        },
+      }));
+    }
+  },
+
   async loadSave(slotId) {
+    if (get().persistence.pending) {
+      return;
+    }
     set((state) => ({
       persistence: { ...state.persistence, pending: true, error: undefined },
     }));
@@ -852,11 +1050,21 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
         }));
         return;
       }
+      const nextLabels = isManualSaveSlotId(slotId)
+        ? {
+            ...get().manualSlotLabels,
+            [slotId]: payload.slot.label || fallbackManualSlotLabel(slotId),
+          }
+        : get().manualSlotLabels;
+      if (isManualSaveSlotId(slotId)) {
+        saveSavePreferences({ manualSlotLabels: nextLabels });
+      }
       set((state) => ({
         world: simulationKernel.hydrateSave(payload),
         selection: undefined,
         editor: emptyEditorState(),
         camera: payload.camera ?? state.camera,
+        manualSlotLabels: nextLabels,
         persistence: {
           ...state.persistence,
           pending: false,
@@ -869,6 +1077,37 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
           ...state.persistence,
           pending: false,
           error: error instanceof Error ? error.message : "Load failed",
+        },
+      }));
+    }
+  },
+
+  async refreshSaveSlots() {
+    try {
+      const slots = await listSlots();
+      const nextLabels = { ...get().manualSlotLabels };
+      let labelsChanged = false;
+      for (const slot of slots) {
+        if (!isManualSaveSlotId(slot.id)) {
+          continue;
+        }
+        if (slot.label && nextLabels[slot.id] !== slot.label) {
+          nextLabels[slot.id] = slot.label;
+          labelsChanged = true;
+        }
+      }
+      if (labelsChanged) {
+        saveSavePreferences({ manualSlotLabels: nextLabels });
+      }
+      set({
+        saveSlots: slots,
+        manualSlotLabels: nextLabels,
+      });
+    } catch (error) {
+      set((state) => ({
+        persistence: {
+          ...state.persistence,
+          error: error instanceof Error ? error.message : "Unable to load save slots",
         },
       }));
     }

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAppStore } from "./store/appStore";
@@ -43,16 +43,47 @@ describe("app shell", () => {
     vi.useRealTimers();
   });
 
-  it("renders the browser shell with the phase-required panels", () => {
+  it("renders the browser shell with the phase-required panels", async () => {
     render(
       <MemoryRouter initialEntries={["/"]}>
         <App />
       </MemoryRouter>,
     );
 
+    await act(async () => {});
+
     expect(screen.getByText("Living Island")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Build" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "World Summary" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "timelapse" })).toBeInTheDocument();
+  });
+
+  it("hides the desktop HUD and overlay legend in photo mode while keeping the viewport mounted", async () => {
+    useAppStore.setState({ overlay: "traffic" });
+
+    const { container } = render(
+      <MemoryRouter initialEntries={["/"]}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    await act(async () => {});
+
+    expect(screen.getByText("Traffic")).toBeInTheDocument();
+
+    act(() => {
+      useAppStore.setState((state) => ({
+        camera: {
+          ...state.camera,
+          hudHidden: true,
+        },
+      }));
+    });
+
+    expect(screen.queryByText("Living Island")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Build" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "World Summary" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Traffic")).not.toBeInTheDocument();
+    expect(container.querySelector(".world-viewport")).not.toBeNull();
   });
 });

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { simulationKernel } from "../../simulation/core/engine";
+import { OVERLAY_PALETTE } from "../../simulation/core/constants";
 import type { RendererFrameInput } from "../../simulation/core/contracts";
 import { deriveInspectorTarget } from "../../simulation/core/editing";
 import { useAppStore } from "../../app/store/appStore";
@@ -135,6 +136,24 @@ function pathPoints(
     .join(" ");
 }
 
+function overlayColorForValue(overlay: Exclude<RendererFrameInput["presentation"]["overlay"], "none">, value: number): string {
+  const palette = OVERLAY_PALETTE[overlay];
+  if (value < 0.34) {
+    return palette[0];
+  }
+  if (value < 0.67) {
+    return palette[1];
+  }
+  return palette[2];
+}
+
+function overlayOpacityForValue(overlay: Exclude<RendererFrameInput["presentation"]["overlay"], "none">, value: number): number {
+  if (overlay === "satisfaction") {
+    return 0.14 + value * 0.3;
+  }
+  return 0.18 + value * 0.36;
+}
+
 function selectionPath(
   world: ReturnType<typeof useAppStore.getState>["world"],
   selection: ReturnType<typeof useAppStore.getState>["selection"],
@@ -199,6 +218,7 @@ export function WorldViewport() {
   const panCamera = useAppStore((state) => state.panCamera);
   const zoomCamera = useAppStore((state) => state.zoomCamera);
   const finalizeActiveDraft = useAppStore((state) => state.finalizeActiveDraft);
+  const presentation = simulationKernel.derivePresentation(world, overlay);
 
   useEffect(() => {
     if (!rendererMountRef.current) {
@@ -230,10 +250,10 @@ export function WorldViewport() {
 
   useEffect(() => {
     frameRef.current = {
-      presentation: simulationKernel.derivePresentation(world, overlay),
+      presentation,
       camera,
     };
-  }, [camera, overlay, world]);
+  }, [camera, presentation]);
 
   const wrapper = wrapperRef.current;
   const viewportWidth = Math.max(1, wrapper?.clientWidth ?? 1);
@@ -264,6 +284,7 @@ export function WorldViewport() {
         : undefined
       : undefined;
   const selectedPath = selectionPath(world, selection);
+  const districtOverlayKind = presentation.overlay !== "none" && presentation.overlay !== "traffic" ? presentation.overlay : undefined;
 
   return (
     <div
@@ -413,6 +434,35 @@ export function WorldViewport() {
     >
       <div className="world-canvas" ref={rendererMountRef} />
       <svg className="world-overlay" height={viewportHeight} viewBox={`0 0 ${viewportWidth} ${viewportHeight}`} width={viewportWidth}>
+        {districtOverlayKind
+          ? presentation.districts.map((district) => {
+              const overlayValue = district.overlayMetrics[districtOverlayKind];
+              return (
+                <polygon
+                  className="overlay-district"
+                  key={`overlay-${district.id}`}
+                  points={rectPolygonPoints(world, district.footprint, viewportWidth, viewportHeight, camera)}
+                  style={{
+                    fill: overlayColorForValue(districtOverlayKind, overlayValue),
+                    opacity: overlayOpacityForValue(districtOverlayKind, overlayValue),
+                  }}
+                />
+              );
+            })
+          : null}
+        {presentation.overlay === "traffic"
+          ? presentation.roadEdges.map((edge) => (
+              <polyline
+                className="overlay-traffic-path"
+                key={`overlay-traffic-${edge.id}`}
+                points={pathPoints(world, edge.path, viewportWidth, viewportHeight, camera)}
+                style={{
+                  opacity: 0.25 + edge.congestion * 0.65,
+                  stroke: overlayColorForValue("traffic", edge.congestion),
+                }}
+              />
+            ))
+          : null}
         {selectionStroke ? <polygon className="selection-shape" points={selectionStroke} /> : null}
         {selectedPath && !selectionStroke ? <polyline className="selection-path" points={pathPoints(world, selectedPath, viewportWidth, viewportHeight, camera)} /> : null}
         {editor.preview?.kind === "zone" ? (

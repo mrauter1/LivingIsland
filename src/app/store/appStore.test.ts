@@ -154,4 +154,33 @@ describe("app store", () => {
     expect(useAppStore.getState().selection).toBeUndefined();
     expect(useAppStore.getState().editor.statusText).toContain("demolished");
   });
+
+  it("round-trips a manual save slot with world state and camera state", async () => {
+    const initialWorld = structuredClone(useAppStore.getState().world);
+    const initialCamera = {
+      ...useAppStore.getState().camera,
+      yaw: 1.05,
+      pitch: 0.91,
+      cinematic: true,
+    };
+
+    useAppStore.setState({ camera: initialCamera });
+    useAppStore.getState().setManualSaveSlotLabel("slot-1", "Regression Slot");
+    await useAppStore.getState().saveToSlot("slot-1");
+
+    useAppStore.getState().newWorld("different-seed");
+    expect(useAppStore.getState().world.metadata.seed).toBe("different-seed");
+
+    await useAppStore.getState().loadSave("slot-1");
+
+    const restoredState = useAppStore.getState();
+    expect(restoredState.world.metadata.seed).toBe(initialWorld.metadata.seed);
+    expect(restoredState.world.clock.tick).toBe(initialWorld.clock.tick);
+    expect(restoredState.world.events).toEqual(initialWorld.events);
+    expect(restoredState.camera.yaw).toBeCloseTo(initialCamera.yaw);
+    expect(restoredState.camera.pitch).toBeCloseTo(initialCamera.pitch);
+    expect(restoredState.camera.cinematic).toBe(true);
+    expect(restoredState.persistence.activeSlotId).toBe("slot-1");
+    expect(restoredState.saveSlots.some((slot) => slot.id === "slot-1" && slot.label === "Regression Slot")).toBe(true);
+  });
 });

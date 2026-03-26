@@ -23,6 +23,12 @@ export interface PresentationDistrict {
   activity: number;
   blackout: boolean;
   onFire: boolean;
+  overlayMetrics: {
+    traffic: number;
+    power: number;
+    water: number;
+    satisfaction: number;
+  };
 }
 
 export interface PresentationUtility {

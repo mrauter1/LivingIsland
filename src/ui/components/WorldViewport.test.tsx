@@ -190,4 +190,20 @@ describe("WorldViewport", () => {
     expect(useAppStore.getState().world.roadEdges[0]?.path).toHaveLength(2);
     expect(useAppStore.getState().selection?.kind).toBe("road_edge");
   });
+
+  it("renders traffic and district overlays from derived presentation data", () => {
+    const { container, rerender } = render(<WorldViewport />);
+
+    act(() => {
+      useAppStore.getState().setOverlay("traffic");
+    });
+    rerender(<WorldViewport />);
+    expect(container.querySelectorAll(".overlay-traffic-path").length).toBeGreaterThan(0);
+
+    act(() => {
+      useAppStore.getState().setOverlay("satisfaction");
+    });
+    rerender(<WorldViewport />);
+    expect(container.querySelectorAll(".overlay-district").length).toBeGreaterThan(0);
+  });
 });

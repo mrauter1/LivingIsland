@@ -203,6 +203,7 @@ export function WorldViewport() {
   const dragStateRef = useRef<PointerDragState | null>(null);
   const pointerIdRef = useRef<number | null>(null);
   const [viewportSize, setViewportSize] = useState({ height: 1, width: 1 });
+  const [rendererError, setRendererError] = useState<string | null>(null);
 
   const world = useAppStore((state) => state.world);
   const overlay = useAppStore((state) => state.overlay);
@@ -227,16 +228,49 @@ export function WorldViewport() {
       return undefined;
     }
 
-    const renderer = new WorldRenderer(rendererMountRef.current);
-    rendererRef.current = renderer;
-    const onResize = () => renderer.resize();
+    let renderer: WorldRenderer | null = null;
+    const teardownRenderer = () => {
+      if (!renderer) {
+        return;
+      }
+      renderer.dispose();
+      rendererRef.current = null;
+      renderer = null;
+    };
+    const reportInitFailure = (error: unknown) => {
+      console.error("[WorldViewport] Failed to initialize renderer", error);
+      setRendererError("3D viewport unavailable: renderer initialization failed.");
+      teardownRenderer();
+    };
+
+    try {
+      renderer = new WorldRenderer(rendererMountRef.current);
+      rendererRef.current = renderer;
+      setRendererError(null);
+    } catch (error) {
+      reportInitFailure(error);
+      return undefined;
+    }
+
+    const onResize = () => {
+      try {
+        renderer?.resize();
+      } catch (error) {
+        reportInitFailure(error);
+      }
+    };
     window.addEventListener("resize", onResize);
     let animationFrameId = 0;
 
     const renderFrame = (time: number) => {
       const frame = frameRef.current;
-      if (frame) {
-        renderer.render(frame, time);
+      if (frame && renderer) {
+        try {
+          renderer.render(frame, time);
+        } catch (error) {
+          reportInitFailure(error);
+          return;
+        }
       }
       animationFrameId = window.requestAnimationFrame(renderFrame);
     };
@@ -245,8 +279,7 @@ export function WorldViewport() {
     return () => {
       window.cancelAnimationFrame(animationFrameId);
       window.removeEventListener("resize", onResize);
-      renderer.dispose();
-      rendererRef.current = null;
+      teardownRenderer();
     };
   }, []);
 
@@ -490,6 +523,11 @@ export function WorldViewport() {
       ref={wrapperRef}
     >
       <div className="world-canvas" ref={rendererMountRef} />
+      {rendererError ? (
+        <div className="world-canvas-error" role="status">
+          {rendererError}
+        </div>
+      ) : null}
       <svg className="world-overlay" height={viewportHeight} viewBox={`0 0 ${viewportWidth} ${viewportHeight}`} width={viewportWidth}>
         {districtOverlayKind
           ? presentation.districts.map((district) => {

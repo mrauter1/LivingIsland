@@ -240,6 +240,22 @@ input {
   display: block;
 }
 
+.world-canvas-error {
+  align-items: center;
+  background: linear-gradient(180deg, rgba(27, 32, 47, 0.92), rgba(16, 19, 29, 0.95));
+  color: rgba(255, 214, 201, 0.96);
+  display: flex;
+  font-size: 0.92rem;
+  inset: 0;
+  justify-content: center;
+  letter-spacing: 0.01em;
+  padding: 1rem;
+  pointer-events: none;
+  position: absolute;
+  text-align: center;
+  z-index: 2;
+}
+
 .world-overlay {
   inset: 0;
   pointer-events: none;

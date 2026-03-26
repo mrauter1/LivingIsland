@@ -1,0 +1,4 @@
+<autoloop-decisions-header version="1" block_seq="1" owner="planner" phase_id="task-global" pair="plan" turn_seq="1" run_id="run-20260326T053253Z-9f27043d" ts="2026-03-26T05:32:53.719604+00:00" />
+Treat the length-based ID review finding as a cross-file fix: when engine allocation becomes monotonic, app-store code must stop predicting new entity IDs from collection length on affected creation paths.
+Preserve the existing `prefix-<number>` ID format and change only the allocation rule to avoid save/UI compatibility drift.
+Do not perform a standalone `handleWorldClick` refactor in this task; only make minimal local store edits required by the accepted fixes.

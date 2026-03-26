@@ -1,0 +1,5 @@
+# Plan ↔ Plan Verifier Feedback
+
+- 2026-03-25: Replaced empty plan artifacts with a six-phase greenfield P0 implementation plan, explicit module interfaces, and regression controls because the repository currently contains only the PRD plus autoloop metadata.
+- PLAN-001 non-blocking: `plan.md` covers persistence at a high level, but the implementation phase should keep the PRD's required save contents explicit during execution: seed, terrain/world-generation metadata, districts, infrastructure, transit routes, weather, time, active events, and simulation values. This is already directionally covered, but keeping the checklist explicit will reduce save-schema drift risk.
+- PLAN-002 non-blocking: `phase_plan.yaml` phase `world-generation-and-rendering` uses acceptance wording about visible "movement" before representative traffic/transit motion is formally introduced in `simulation-events-and-motion`. Treat that phase-2 movement requirement as environmental motion (water/clouds/day-night) or tighten the wording during execution so the phase boundaries stay crisp.

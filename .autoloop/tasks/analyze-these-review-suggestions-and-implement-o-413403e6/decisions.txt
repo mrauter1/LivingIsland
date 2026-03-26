@@ -1,0 +1,22 @@
+<autoloop-decisions-header version="1" block_seq="1" owner="planner" phase_id="task-global" pair="plan" turn_seq="1" run_id="run-20260326T053508Z-425f2845" ts="2026-03-26T05:35:08.836398+00:00" />
+Fixing count-based kernel IDs also requires updating app-store create flows that still predict selected entity IDs from array length.
+Preserve the seeded Day 1 08:00 offset when advancing clock fields; tick remains the monotonic simulation source of truth.
+Do not broadly refactor handleWorldClick unless a tiny extraction is directly needed for the accepted fixes, because this interaction path is central and current request does not justify wider risk.
+<autoloop-decisions-header version="1" block_seq="2" owner="planner" phase_id="task-global" pair="plan" turn_seq="2" run_id="run-20260326T053508Z-425f2845" ts="2026-03-26T05:37:54.945202+00:00" />
+Superseding the earlier narrower wording, the ID-allocation fix applies to every nextId consumer in the kernel, including runtime-created event IDs, not only editor-created entities and road nodes.
+<autoloop-decisions-header version="1" block_seq="3" owner="implementer" phase_id="implement-reviewed-fixes" pair="implement" turn_seq="1" run_id="run-20260326T053924Z-b6a352de" ts="2026-03-26T05:39:24.374385+00:00" />
+Kernel ID monotonicity is implemented with a world-scoped WeakMap of per-prefix counters seeded from the live world on first clone and copied through step/editor/save/hydrate clones, so deletes stop reusing suffixes without changing the persisted save schema.
+Daily timeline rollover now keys off the displayed clock reaching 00:00 instead of tick modulo day length, so preserving the seeded Day 1 08:00 offset does not drift day-boundary timeline entries.
+<autoloop-decisions-header version="1" block_seq="4" owner="implementer" phase_id="implement-reviewed-fixes" pair="implement" turn_seq="2" run_id="run-20260326T053924Z-b6a352de" ts="2026-03-26T05:54:00+00:00" />
+Per explicit clarification, AC-1 takes precedence over the earlier no-save-schema-change guidance, so monotonic next-ID state is now persisted as a backward-compatible optional field in world runtime state and hydrated with live-ID defaults for older saves.
+<autoloop-decisions-header version="1" block_seq="5" owner="tester" phase_id="implement-reviewed-fixes" pair="test" turn_seq="1" run_id="run-20260326T053924Z-b6a352de" ts="2026-03-26T05:57:00+00:00" />
+Legacy-save compatibility is covered by stripping `runtime.nextIds` from serialized payloads in tests and asserting hydrate derives live suffix defaults, avoiding brittle checked-in legacy fixture files while still exercising the fallback path.
+<autoloop-decisions-header version="1" block_seq="4" owner="runtime" phase_id="implement-reviewed-fixes" pair="implement" turn_seq="2" run_id="run-20260326T053924Z-b6a352de" ts="2026-03-26T05:51:12.390636+00:00" entry="questions" qa_seq="1" />
+WARNING: Fixing IMP-001 completely appears to require persisting per-prefix next-ID state through save/load, which is effectively a save-schema change even if added as an optional backward-compatible field with hydrate defaults. Should I proceed with that schema-adjacent persistence change to satisfy AC-1 across cold loads? Answer YES or NO.
+Best supposition: YES: add an optional backward-compatible persisted next-ID field, hydrate defaults for old saves, and regression tests for delete -> save -> cold load -> create.
+<autoloop-decisions-header version="1" block_seq="5" owner="runtime" phase_id="implement-reviewed-fixes" pair="implement" turn_seq="2" run_id="run-20260326T053924Z-b6a352de" ts="2026-03-26T05:51:12.391308+00:00" entry="answers" qa_seq="1" source="auto" />
+I’m checking the request snapshot, the raw phase log, and the relevant save/load code to determine whether AC-1 requires cold-load persistence for next-ID state.
+
+The current blocker is whether the phase contract’s “no save-schema changes” line outweighs AC-1’s cold-load correctness requirement. I’m reading the phase criteria and decisions ledger to resolve that conflict directly.
+
+YES

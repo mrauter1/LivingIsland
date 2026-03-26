@@ -1,0 +1,44 @@
+version: 1
+task_id: analyze-these-review-suggestions-and-implement-o-413403e6
+request_snapshot_ref: /workspace/LivingIsland/.autoloop/tasks/analyze-these-review-suggestions-and-implement-o-413403e6/runs/run-20260326T053508Z-425f2845/request.md
+phases:
+  - phase_id: implement-reviewed-fixes
+    title: Implement validated review suggestions with regression coverage
+    objective: Fix the confirmed ID-allocation and clock-offset bugs, apply any justified .gitignore cleanup, and document why broader click-handler refactoring is deferred.
+    status: planned
+    in_scope:
+      - Replace count-based entity ID allocation with a non-reusing suffix strategy for every nextId callsite in the simulation kernel, including runtime-created events.
+      - Update app-store create flows to select newly created entities using actual post-action IDs instead of predicted array-length IDs.
+      - Preserve the initial Day 1 08:00 clock offset when advancing simulation time.
+      - Remove stale .gitignore entries for Vite config artifacts only if repository workflows do not need them.
+      - Add regression tests for editor-entity ID reuse, runtime event ID reuse, selection correctness, and clock progression.
+      - Record rationale for rejected or deferred review suggestions in implementation notes.
+    out_of_scope:
+      - Broad refactoring of handleWorldClick for style or decomposition alone.
+      - Save-schema changes or unrelated gameplay/editor behavior changes.
+      - Repository cleanup outside the reviewed suggestions.
+    dependencies: []
+    acceptance_criteria:
+      - id: AC-1
+        text: Any nextId-managed object, including editor-created entities and runtime-created events, receives a fresh suffix after deletion or expiry and does not reuse a prior one.
+      - id: AC-2
+        text: App-store selection after create actions resolves to the real created entity ID even when prior deletions have occurred.
+      - id: AC-3
+        text: Simulation time advances from the seeded Day 1 08:00 start without resetting to midnight-origin math, and rollover behavior remains correct.
+      - id: AC-4
+        text: .gitignore changes are made only if the Vite config JS and declaration outputs are not produced or relied on in this repo.
+      - id: AC-5
+        text: Tests cover the accepted fixes and implementation notes state why the click-handler refactor suggestion was not broadly applied.
+    deliverables:
+      - Updated simulation kernel and store logic for ID allocation, selection, and clock progression.
+      - Regression tests covering kernel and store behavior, including runtime event ID allocation.
+      - Updated .gitignore if justified by repository behavior.
+      - Implementation notes documenting rejected or deferred review suggestions.
+    risks:
+      - Missing one store create path would leave selection inconsistent even after kernel IDs are fixed.
+      - Clock offset changes could accidentally move daily timeline generation or weather/event cadence if tick/day math diverges.
+      - Removing .gitignore entries without checking workflow assumptions could create developer noise.
+    rollback:
+      - Revert the ID helper and store selection updates together if post-create selection or entity creation regresses.
+      - Revert clock math separately if day progression or timeline entries drift.
+      - Restore removed .gitignore entries if tooling later emits those files.

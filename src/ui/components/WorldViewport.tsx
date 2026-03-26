@@ -19,16 +19,37 @@ const PROJECT_CAMERA = new THREE.PerspectiveCamera(48, 1, 0.1, 1200);
 type PointerDragState =
   | {
       kind: "orbit" | "pan" | "zone";
+      pointerId: number;
       lastClientX: number;
       lastClientY: number;
       moved: boolean;
     }
   | {
       kind: "click";
+      pointerId: number;
       moved: boolean;
       startClientX: number;
       startClientY: number;
     };
+
+interface ActivePointerState {
+  clientX: number;
+  clientY: number;
+  pointerType: "mouse" | "pen" | "touch";
+}
+
+interface PinchState {
+  pointerIds: [number, number];
+  lastDistance: number;
+}
+
+function normalizePointerType(pointerType: string | undefined): ActivePointerState["pointerType"] {
+  return pointerType === "touch" || pointerType === "pen" ? pointerType : "mouse";
+}
+
+function pointerDistance(first: ActivePointerState, second: ActivePointerState): number {
+  return Math.hypot(first.clientX - second.clientX, first.clientY - second.clientY);
+}
 
 function configureCamera(camera: THREE.PerspectiveCamera, width: number, height: number, cameraState: RendererFrameInput["camera"]) {
   const distance = cameraState.distance;
@@ -201,7 +222,10 @@ export function WorldViewport() {
   const rendererRef = useRef<WorldRenderer | null>(null);
   const frameRef = useRef<RendererFrameInput | null>(null);
   const dragStateRef = useRef<PointerDragState | null>(null);
-  const pointerIdRef = useRef<number | null>(null);
+  const activePointersRef = useRef<Map<number, ActivePointerState>>(new Map());
+  const capturedPointersRef = useRef<Set<number>>(new Set());
+  const pinchStateRef = useRef<PinchState | null>(null);
+  const pinchSuppressedPointersRef = useRef<Set<number>>(new Set());
   const [viewportSize, setViewportSize] = useState({ height: 1, width: 1 });
   const [rendererError, setRendererError] = useState<string | null>(null);
 
@@ -221,6 +245,7 @@ export function WorldViewport() {
   const panCamera = useAppStore((state) => state.panCamera);
   const zoomCamera = useAppStore((state) => state.zoomCamera);
   const finalizeActiveDraft = useAppStore((state) => state.finalizeActiveDraft);
+  const cancelDraft = useAppStore((state) => state.cancelDraft);
   const presentation = simulationKernel.derivePresentation(world, overlay);
 
   useEffect(() => {
@@ -350,6 +375,67 @@ export function WorldViewport() {
   const selectedPath = selectionPath(world, selection);
   const districtOverlayKind = presentation.overlay !== "none" && presentation.overlay !== "traffic" ? presentation.overlay : undefined;
 
+  const releaseCapturedPointer = (element: HTMLDivElement, pointerId: number) => {
+    if (!capturedPointersRef.current.has(pointerId)) {
+      return;
+    }
+    if (
+      typeof element.releasePointerCapture === "function" &&
+      typeof element.hasPointerCapture === "function" &&
+      element.hasPointerCapture(pointerId)
+    ) {
+      element.releasePointerCapture(pointerId);
+    }
+    capturedPointersRef.current.delete(pointerId);
+  };
+
+  const beginPinchGesture = () => {
+    const touchPointers = [...activePointersRef.current.entries()].filter(([, pointer]) => pointer.pointerType === "touch");
+    if (touchPointers.length < 2) {
+      return false;
+    }
+
+    const [firstPointer, secondPointer] = touchPointers;
+    if (!firstPointer || !secondPointer) {
+      return false;
+    }
+
+    pinchStateRef.current = {
+      pointerIds: [firstPointer[0], secondPointer[0]],
+      lastDistance: pointerDistance(firstPointer[1], secondPointer[1]),
+    };
+    pinchSuppressedPointersRef.current.add(firstPointer[0]);
+    pinchSuppressedPointersRef.current.add(secondPointer[0]);
+    if (dragStateRef.current?.kind === "zone") {
+      cancelDraft();
+    }
+    dragStateRef.current = null;
+    setHoverTile(undefined);
+    return true;
+  };
+
+  const updatePinchGesture = () => {
+    const pinchState = pinchStateRef.current;
+    if (!pinchState) {
+      return false;
+    }
+
+    const firstPointer = activePointersRef.current.get(pinchState.pointerIds[0]);
+    const secondPointer = activePointersRef.current.get(pinchState.pointerIds[1]);
+    if (!firstPointer || !secondPointer) {
+      pinchStateRef.current = null;
+      return false;
+    }
+
+    const nextDistance = pointerDistance(firstPointer, secondPointer);
+    const deltaY = pinchState.lastDistance - nextDistance;
+    pinchState.lastDistance = nextDistance;
+    if (Math.abs(deltaY) > 0.5) {
+      zoomCamera(deltaY);
+    }
+    return true;
+  };
+
   return (
     <div
       className="world-viewport interactive"
@@ -374,29 +460,40 @@ export function WorldViewport() {
         if (!element) {
           return;
         }
-        pointerIdRef.current = event.pointerId;
+        const pointerType = normalizePointerType(event.pointerType);
+        activePointersRef.current.set(event.pointerId, {
+          clientX: event.clientX,
+          clientY: event.clientY,
+          pointerType,
+        });
         if (typeof event.currentTarget.setPointerCapture === "function") {
           event.currentTarget.setPointerCapture(event.pointerId);
+          capturedPointersRef.current.add(event.pointerId);
+        }
+        if (pointerType === "touch" && beginPinchGesture()) {
+          return;
         }
         const tile = pickTileFromEvent(event.nativeEvent, element, camera);
         if (tile) {
           setHoverTile(tile);
         }
-        if (event.button === 2 || (event.button === 0 && event.shiftKey)) {
+        if (pointerType === "mouse" && (event.button === 2 || (event.button === 0 && event.shiftKey))) {
           dragStateRef.current = {
             kind: "pan",
+            pointerId: event.pointerId,
             lastClientX: event.clientX,
             lastClientY: event.clientY,
             moved: false,
           };
           return;
         }
-        if (event.button !== 0) {
+        if (pointerType === "mouse" && event.button !== 0) {
           return;
         }
         if (mode === "inspect") {
           dragStateRef.current = {
             kind: "orbit",
+            pointerId: event.pointerId,
             lastClientX: event.clientX,
             lastClientY: event.clientY,
             moved: false,
@@ -406,6 +503,7 @@ export function WorldViewport() {
         if (mode === "build_zone" && tile) {
           dragStateRef.current = {
             kind: "zone",
+            pointerId: event.pointerId,
             lastClientX: event.clientX,
             lastClientY: event.clientY,
             moved: false,
@@ -415,13 +513,14 @@ export function WorldViewport() {
         }
         dragStateRef.current = {
           kind: "click",
+          pointerId: event.pointerId,
           startClientX: event.clientX,
           startClientY: event.clientY,
           moved: false,
         };
       }}
       onPointerLeave={() => {
-        if (!dragStateRef.current) {
+        if (!dragStateRef.current && !pinchStateRef.current) {
           setHoverTile(undefined);
         }
       }}
@@ -430,11 +529,21 @@ export function WorldViewport() {
         if (!element) {
           return;
         }
+        const pointerType = normalizePointerType(event.pointerType);
+        activePointersRef.current.set(event.pointerId, {
+          clientX: event.clientX,
+          clientY: event.clientY,
+          pointerType,
+        });
+        if (pinchStateRef.current) {
+          updatePinchGesture();
+          return;
+        }
         const tile = pickTileFromEvent(event.nativeEvent, element, camera);
         setHoverTile(tile);
 
         const dragState = dragStateRef.current;
-        if (!dragState) {
+        if (!dragState || dragState.pointerId !== event.pointerId) {
           return;
         }
 
@@ -468,14 +577,17 @@ export function WorldViewport() {
       }}
       onPointerUp={(event) => {
         const element = wrapperRef.current;
-        if (
-          pointerIdRef.current !== null &&
-          typeof event.currentTarget.releasePointerCapture === "function" &&
-          event.currentTarget.hasPointerCapture(pointerIdRef.current)
-        ) {
-          event.currentTarget.releasePointerCapture(pointerIdRef.current);
+        activePointersRef.current.delete(event.pointerId);
+        if (element) {
+          releaseCapturedPointer(element, event.pointerId);
         }
-        pointerIdRef.current = null;
+        if (pinchSuppressedPointersRef.current.delete(event.pointerId)) {
+          if (pinchStateRef.current?.pointerIds.includes(event.pointerId)) {
+            pinchStateRef.current = null;
+          }
+          dragStateRef.current = null;
+          return;
+        }
         if (!element) {
           dragStateRef.current = null;
           return;
@@ -484,7 +596,7 @@ export function WorldViewport() {
         const tile = pickTileFromEvent(event.nativeEvent, element, camera);
         const dragState = dragStateRef.current;
         dragStateRef.current = null;
-        if (!dragState) {
+        if (!dragState || dragState.pointerId !== event.pointerId) {
           return;
         }
 
@@ -505,14 +617,15 @@ export function WorldViewport() {
         }
       }}
       onPointerCancel={(event) => {
-        if (
-          pointerIdRef.current !== null &&
-          typeof event.currentTarget.releasePointerCapture === "function" &&
-          event.currentTarget.hasPointerCapture(pointerIdRef.current)
-        ) {
-          event.currentTarget.releasePointerCapture(pointerIdRef.current);
+        const element = wrapperRef.current;
+        activePointersRef.current.delete(event.pointerId);
+        pinchSuppressedPointersRef.current.delete(event.pointerId);
+        if (pinchStateRef.current?.pointerIds.includes(event.pointerId)) {
+          pinchStateRef.current = null;
         }
-        pointerIdRef.current = null;
+        if (element) {
+          releaseCapturedPointer(element, event.pointerId);
+        }
         dragStateRef.current = null;
         setHoverTile(undefined);
       }}

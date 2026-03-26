@@ -1,0 +1,43 @@
+version: 1
+task_id: mobile-ios-issues-and-fix-request-context-users-7a0c2e7d
+request_snapshot_ref: /workspace/LivingIsland/.autoloop/tasks/mobile-ios-issues-and-fix-request-context-users-7a0c2e7d/runs/run-20260326T185419Z-43988099/request.md
+phases:
+  - phase_id: fix-mobile-viewport-input-and-layout
+    title: Fix touch interaction, touch zoom, and phone layout in the existing shell
+    objective: Make viewport interactions usable on iOS/touch devices and remove desktop-only layout constraints that mis-center the map on phones, with automated regression coverage.
+    status: planned
+    in_scope:
+      - Update `WorldViewport` pointer handling so primary touch/pen interactions reach the existing build/select flow while desktop pan controls remain unchanged.
+      - Add pinch-driven zoom in `WorldViewport` by reusing the existing camera zoom behavior.
+      - Align viewport `touch-action` styling with the implemented gesture handling.
+      - Add mobile breakpoints and remove desktop-only root min-width constraints in the existing CSS shell layout.
+      - Reduce rigid viewport minimum sizing that clips or shifts the map on short phone screens.
+      - Add regression tests for touch apply behavior, pinch zoom, and mobile layout visibility, then run Vitest and Playwright suites.
+    out_of_scope:
+      - A separate mobile-only UI or alternate shell structure.
+      - New camera store APIs, save-schema changes, or unrelated UI redesign.
+      - Feature work outside touch input, zoom, layout centering, and their direct regression coverage.
+    dependencies: []
+    acceptance_criteria:
+      - id: AC-1
+        text: Primary touch and pen interactions can trigger the existing map build/select action path, while right-click pan and `Shift` + primary mouse pan still work on desktop.
+      - id: AC-2
+        text: Two-touch pinch gestures drive camera zoom through the existing zoom behavior and do not accidentally finish click, zone, or orbit interactions.
+      - id: AC-3
+        text: The app no longer enforces the global `1280px` root minimum width, and phone-width layouts keep the viewport visible and centered without horizontal overflow.
+      - id: AC-4
+        text: Desktop wheel zoom, desktop shell visibility, and photo-mode/hud-hidden layout continue to work after the mobile changes.
+      - id: AC-5
+        text: Automated coverage is added for touch interaction and mobile layout paths, and `npm test` plus `npm run test:e2e` complete with reported results.
+    deliverables:
+      - Updated viewport gesture handling and touch-action policy in the existing viewport component.
+      - Responsive CSS updates that remove desktop-only min-width assumptions and center the map on phones.
+      - Regression tests covering touch apply behavior, pinch zoom, and narrow-screen shell visibility.
+    risks:
+      - Gesture-state conflicts can cause pinch input to fire accidental build or selection actions.
+      - CSS breakpoint changes can destabilize desktop panel layout if column minimums are weakened too broadly.
+      - Chromium-based mobile tests will not fully guarantee parity with iOS Safari.
+    rollback:
+      - Revert the viewport gesture-state changes together with their new tests if touch interactions become inconsistent.
+      - Revert the mobile breakpoint and sizing changes separately if they regress desktop shell layout.
+      - Keep unit touch tests even if a mobile Playwright smoke needs to be replaced for stability.

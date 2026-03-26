@@ -40,6 +40,27 @@ vi.mock("../../world/rendering/WorldRenderer", () => ({
 
 import { WorldViewport } from "./WorldViewport";
 
+function createOpenBuildWorld() {
+  const world = structuredClone(useAppStore.getState().world);
+  world.districts = [];
+  world.utilities = [];
+  world.roadNodes = [];
+  world.roadEdges = [];
+  world.tramLines = [];
+  world.tramStops = [];
+  world.ferryDocks = [];
+  world.ferryRoutes = [];
+  world.terrain.tiles = world.terrain.tiles.map((tile) => ({
+    ...tile,
+    terrain: "plains",
+    isBuildable: true,
+    districtId: undefined,
+    utilityId: undefined,
+    coastline: false,
+  }));
+  return world;
+}
+
 describe("WorldViewport", () => {
   let frameCallbacks: Map<number, FrameRequestCallback>;
   let nextFrameId: number;
@@ -175,20 +196,63 @@ describe("WorldViewport", () => {
     });
   });
 
-  it("finalizes a road from the viewport double-click gesture", () => {
-    const world = structuredClone(useAppStore.getState().world);
-    world.roadNodes = [];
-    world.roadEdges = [];
-    world.districts = [];
-    world.utilities = [];
-    world.terrain.tiles = world.terrain.tiles.map((tile) => ({
-      ...tile,
-      terrain: "plains",
-      isBuildable: true,
-      districtId: undefined,
-      utilityId: undefined,
-      coastline: false,
+  it("routes primary touch taps through the existing build action path", () => {
+    const world = createOpenBuildWorld();
+    useAppStore.setState((state) => ({
+      world,
+      selection: undefined,
+      mode: "place_utility",
+      editor: {
+        ...state.editor,
+        activeUtilityType: "park",
+        preview: undefined,
+        statusText: undefined,
+      },
     }));
+
+    const { container } = render(<WorldViewport />);
+    const viewport = container.querySelector(".world-viewport");
+    expect(viewport).not.toBeNull();
+
+    act(() => {
+      fireEvent.pointerDown(viewport!, { button: 0, clientX: 180, clientY: 180, pointerId: 1, pointerType: "touch" });
+      fireEvent.pointerUp(viewport!, { button: 0, clientX: 180, clientY: 180, pointerId: 1, pointerType: "touch" });
+    });
+
+    expect(useAppStore.getState().world.utilities).toHaveLength(1);
+    expect(useAppStore.getState().selection?.kind).toBe("utility");
+  });
+
+  it("routes primary pen taps through the existing inspect selection path", () => {
+    const world = structuredClone(useAppStore.getState().world);
+    const templateDistrict = world.districts[0]!;
+    world.districts = [
+      {
+        ...templateDistrict,
+        id: "district-pen-target",
+        footprint: { x: 0, y: 0, width: 128, height: 128 },
+        tiles: [{ x: 64, y: 64 }],
+      },
+    ];
+    useAppStore.setState({ world, selection: undefined, mode: "inspect" });
+
+    const { container } = render(<WorldViewport />);
+    const viewport = container.querySelector(".world-viewport");
+    expect(viewport).not.toBeNull();
+
+    act(() => {
+      fireEvent.pointerDown(viewport!, { button: 0, clientX: 200, clientY: 200, pointerId: 9, pointerType: "pen" });
+      fireEvent.pointerUp(viewport!, { button: 0, clientX: 200, clientY: 200, pointerId: 9, pointerType: "pen" });
+    });
+
+    expect(useAppStore.getState().selection).toEqual({
+      kind: "district",
+      entityId: "district-pen-target",
+    });
+  });
+
+  it("finalizes a road from the viewport double-click gesture", () => {
+    const world = createOpenBuildWorld();
     useAppStore.setState({ world, selection: undefined, mode: "build_road" });
 
     const { container } = render(<WorldViewport />);
@@ -208,6 +272,120 @@ describe("WorldViewport", () => {
     expect(useAppStore.getState().world.roadEdges).toHaveLength(1);
     expect(useAppStore.getState().world.roadEdges[0]?.path).toHaveLength(2);
     expect(useAppStore.getState().selection?.kind).toBe("road_edge");
+  });
+
+  it("uses pinch gestures to zoom without finishing a zone drag", () => {
+    const world = createOpenBuildWorld();
+    useAppStore.setState((state) => ({
+      world,
+      selection: undefined,
+      mode: "build_zone",
+      editor: {
+        ...state.editor,
+        preview: undefined,
+        statusText: undefined,
+        zoneDragStart: undefined,
+      },
+    }));
+    const initialDistance = useAppStore.getState().camera.distance;
+
+    const { container } = render(<WorldViewport />);
+    const viewport = container.querySelector(".world-viewport");
+    expect(viewport).not.toBeNull();
+
+    act(() => {
+      fireEvent.pointerDown(viewport!, { button: 0, clientX: 150, clientY: 200, pointerId: 1, pointerType: "touch" });
+      fireEvent.pointerDown(viewport!, { button: 0, clientX: 250, clientY: 200, pointerId: 2, pointerType: "touch" });
+      fireEvent.pointerMove(viewport!, { button: 0, clientX: 120, clientY: 200, pointerId: 1, pointerType: "touch" });
+      fireEvent.pointerMove(viewport!, { button: 0, clientX: 280, clientY: 200, pointerId: 2, pointerType: "touch" });
+      fireEvent.pointerUp(viewport!, { button: 0, clientX: 120, clientY: 200, pointerId: 1, pointerType: "touch" });
+      fireEvent.pointerUp(viewport!, { button: 0, clientX: 280, clientY: 200, pointerId: 2, pointerType: "touch" });
+    });
+
+    expect(useAppStore.getState().camera.distance).toBeLessThan(initialDistance);
+    expect(useAppStore.getState().world.districts).toHaveLength(0);
+    expect(useAppStore.getState().editor.preview).toBeUndefined();
+  });
+
+  it("uses pinch gestures to zoom without completing a click-driven build action", () => {
+    const world = createOpenBuildWorld();
+    useAppStore.setState((state) => ({
+      world,
+      selection: undefined,
+      mode: "place_utility",
+      editor: {
+        ...state.editor,
+        activeUtilityType: "park",
+        preview: undefined,
+        statusText: undefined,
+      },
+    }));
+    const initialDistance = useAppStore.getState().camera.distance;
+
+    const { container } = render(<WorldViewport />);
+    const viewport = container.querySelector(".world-viewport");
+    expect(viewport).not.toBeNull();
+
+    act(() => {
+      fireEvent.pointerDown(viewport!, { button: 0, clientX: 170, clientY: 200, pointerId: 1, pointerType: "touch" });
+      fireEvent.pointerDown(viewport!, { button: 0, clientX: 250, clientY: 200, pointerId: 2, pointerType: "touch" });
+      fireEvent.pointerMove(viewport!, { button: 0, clientX: 135, clientY: 200, pointerId: 1, pointerType: "touch" });
+      fireEvent.pointerMove(viewport!, { button: 0, clientX: 285, clientY: 200, pointerId: 2, pointerType: "touch" });
+      fireEvent.pointerUp(viewport!, { button: 0, clientX: 135, clientY: 200, pointerId: 1, pointerType: "touch" });
+      fireEvent.pointerUp(viewport!, { button: 0, clientX: 285, clientY: 200, pointerId: 2, pointerType: "touch" });
+    });
+
+    expect(useAppStore.getState().camera.distance).toBeLessThan(initialDistance);
+    expect(useAppStore.getState().world.utilities).toHaveLength(0);
+    expect(useAppStore.getState().selection).toBeUndefined();
+  });
+
+  it("uses pinch gestures to zoom without selecting or orbiting in inspect mode", () => {
+    const world = structuredClone(useAppStore.getState().world);
+    const templateDistrict = world.districts[0]!;
+    world.districts = [
+      {
+        ...templateDistrict,
+        id: "district-pinch-target",
+        footprint: { x: 0, y: 0, width: 128, height: 128 },
+        tiles: [{ x: 64, y: 64 }],
+      },
+    ];
+    useAppStore.setState({ world, mode: "inspect", selection: undefined });
+    const initialCamera = useAppStore.getState().camera;
+
+    const { container } = render(<WorldViewport />);
+    const viewport = container.querySelector(".world-viewport");
+    expect(viewport).not.toBeNull();
+
+    act(() => {
+      fireEvent.pointerDown(viewport!, { button: 0, clientX: 180, clientY: 200, pointerId: 1, pointerType: "touch" });
+      fireEvent.pointerDown(viewport!, { button: 0, clientX: 240, clientY: 200, pointerId: 2, pointerType: "touch" });
+      fireEvent.pointerMove(viewport!, { button: 0, clientX: 150, clientY: 170, pointerId: 1, pointerType: "touch" });
+      fireEvent.pointerMove(viewport!, { button: 0, clientX: 270, clientY: 230, pointerId: 2, pointerType: "touch" });
+      fireEvent.pointerUp(viewport!, { button: 0, clientX: 150, clientY: 170, pointerId: 1, pointerType: "touch" });
+      fireEvent.pointerUp(viewport!, { button: 0, clientX: 270, clientY: 230, pointerId: 2, pointerType: "touch" });
+    });
+
+    const nextCamera = useAppStore.getState().camera;
+    expect(nextCamera.distance).toBeLessThan(initialCamera.distance);
+    expect(nextCamera.yaw).toBe(initialCamera.yaw);
+    expect(nextCamera.pitch).toBe(initialCamera.pitch);
+    expect(useAppStore.getState().selection).toBeUndefined();
+  });
+
+  it("keeps desktop wheel zoom active alongside touch zoom support", () => {
+    const initialDistance = useAppStore.getState().camera.distance;
+
+    const { container } = render(<WorldViewport />);
+    const viewport = container.querySelector(".world-viewport");
+    expect(viewport).not.toBeNull();
+
+    act(() => {
+      fireEvent.wheel(viewport!, { deltaY: -120 });
+    });
+
+    expect(useAppStore.getState().camera.distance).toBeLessThan(initialDistance);
   });
 
   it("renders traffic and district overlays from derived presentation data", () => {
@@ -244,6 +422,31 @@ describe("WorldViewport", () => {
     expect(setPointerCapture).toHaveBeenCalledWith(7);
     expect(hasPointerCapture).toHaveBeenCalledWith(7);
     expect(releasePointerCapture).toHaveBeenCalledWith(7);
+  });
+
+  it("keeps desktop pan controls on secondary or shift-primary mouse drags", () => {
+    const { container } = render(<WorldViewport />);
+    const viewport = container.querySelector(".world-viewport") as HTMLDivElement;
+    expect(viewport).not.toBeNull();
+
+    const initialTarget = useAppStore.getState().camera.target;
+
+    act(() => {
+      fireEvent.pointerDown(viewport, { button: 0, buttons: 1, clientX: 200, clientY: 200, pointerId: 11, pointerType: "mouse", shiftKey: true });
+      fireEvent.pointerMove(viewport, { button: 0, buttons: 1, clientX: 240, clientY: 220, pointerId: 11, pointerType: "mouse", shiftKey: true });
+      fireEvent.pointerUp(viewport, { button: 0, clientX: 240, clientY: 220, pointerId: 11, pointerType: "mouse", shiftKey: true });
+    });
+
+    const afterShiftPan = useAppStore.getState().camera.target;
+    expect(afterShiftPan).not.toEqual(initialTarget);
+
+    act(() => {
+      fireEvent.pointerDown(viewport, { button: 2, buttons: 2, clientX: 210, clientY: 210, pointerId: 12, pointerType: "mouse" });
+      fireEvent.pointerMove(viewport, { button: 2, buttons: 2, clientX: 250, clientY: 250, pointerId: 12, pointerType: "mouse" });
+      fireEvent.pointerUp(viewport, { button: 2, clientX: 250, clientY: 250, pointerId: 12, pointerType: "mouse" });
+    });
+
+    expect(useAppStore.getState().camera.target).not.toEqual(afterShiftPan);
   });
 
   it("keeps UI available and displays a fallback surface when renderer construction fails", () => {

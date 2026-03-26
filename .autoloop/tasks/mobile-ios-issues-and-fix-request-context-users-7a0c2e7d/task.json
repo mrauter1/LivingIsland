@@ -1,0 +1,36 @@
+{
+  "task_id": "mobile-ios-issues-and-fix-request-context-users-7a0c2e7d",
+  "created_at": "2026-03-26T18:54:19.285119+00:00",
+  "request_text": "# Mobile / iOS Issues and Fix Request\n\n## Context\nUsers reported critical usability issues on iOS Safari and phones:\n1. Can select tools/entities but cannot apply build actions on map.\n2. Cannot zoom on touch devices.\n3. Island/viewport appears shifted to the side; expected centered map on phone.\n\n## Findings (for implementation team)\n\n### Issue 1 \u2014 iOS Safari build actions not applying from map\n`WorldViewport` currently gates pointer handling with strict mouse-button checks (`event.button === 0`).\nOn touch/pen devices this can block primary interaction, preventing build actions from reaching `handleWorldClick`.\n\n### Issue 2 \u2014 No zoom path on touch devices\nZoom is currently wired to wheel events only (`onWheel -> zoomCamera(deltaY)`).\nAt the same time, `.world-viewport.interactive { touch-action: none; }` suppresses native touch gestures (including pinch) without a full replacement.\n\n### Issue 3 \u2014 Phone layout is desktop-locked causing off-center viewport\nGlobal min width and desktop grid constraints force horizontal overflow on phones:\n- `html, body, #root { min-width: 1280px; }`\n- `.app-shell` desktop columns with large minimum widths\n- no true phone/mobile breakpoint behavior\nThis makes map appear shifted/cropped rather than centered.\n\n## Request to fix\nPlease implement and verify all of the following:\n\n1. **Touch-primary interaction support**\n   - Update pointer gating so touch/pen primary interactions work for build/placement actions.\n   - Preserve right-click/shift mouse pan behavior for desktop.\n\n2. **Touch zoom support**\n   - Add pinch-to-zoom (or equivalent touch zoom controls) that call into existing camera zoom behavior.\n   - Keep desktop wheel zoom.\n   - Align `touch-action` policy with implemented gestures.\n\n3. **Mobile responsive centering**\n   - Add mobile breakpoints that remove desktop-only min-width constraints.\n   - Ensure viewport is centered and usable on phone widths.\n   - Reduce rigid viewport minimum sizing that causes clipping on short screens.\n\n4. **Tests**\n   - Add/adjust tests for touch interaction behavior (including build apply path and zoom path).\n   - Run test suite and report results.\n\n## Execution mode requested\nRun in **autoloop** with pair flow:\n- `plan`\n- `implement`\n- `test`\n\nDo not stop early if execution appears temporarily stalled; allow completion.",
+  "request_updated_at": "2026-03-26T18:54:19.285175+00:00",
+  "phase_plan_path": "/workspace/LivingIsland/.autoloop/tasks/mobile-ios-issues-and-fix-request-context-users-7a0c2e7d/plan/phase_plan.yaml",
+  "phase_plan_version": 1,
+  "active_phase_selection": {
+    "run_id": "run-20260326T185419Z-43988099",
+    "mode": "single",
+    "phase_ids": [
+      "fix-mobile-viewport-input-and-layout"
+    ],
+    "explicit": true,
+    "current_phase_index": 1,
+    "current_phase_id": null
+  },
+  "phase_status": {
+    "fix-mobile-viewport-input-and-layout": "completed"
+  },
+  "phase_history": [
+    {
+      "phase_id": "fix-mobile-viewport-input-and-layout",
+      "run_id": "run-20260326T185419Z-43988099",
+      "status": "in_progress",
+      "ts": "2026-03-26T18:57:14.981470+00:00"
+    },
+    {
+      "phase_id": "fix-mobile-viewport-input-and-layout",
+      "run_id": "run-20260326T185419Z-43988099",
+      "status": "completed",
+      "ts": "2026-03-26T19:25:00.149918+00:00",
+      "pair": "test"
+    }
+  ]
+}

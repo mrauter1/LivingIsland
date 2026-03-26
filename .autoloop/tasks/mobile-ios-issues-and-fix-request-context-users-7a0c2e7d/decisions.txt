@@ -1,0 +1,7 @@
+<autoloop-decisions-header version="1" block_seq="1" owner="planner" phase_id="task-global" pair="plan" turn_seq="1" run_id="run-20260326T185419Z-43988099" ts="2026-03-26T18:54:19.383189+00:00" />
+Pinch zoom should be implemented inside `WorldViewport` by translating gesture distance changes into the existing `zoomCamera(deltaY)` action instead of widening the app-store camera API.
+Active two-touch pinch input must suppress click, zone-drag completion, and inspect-orbit completion for the participating pointers so zoom gestures cannot accidentally place or select entities.
+Mobile centering should be fixed by removing the global root min-width and adding CSS breakpoints to the existing shell layout rather than creating a separate mobile-only UI path.
+<autoloop-decisions-header version="1" block_seq="2" owner="implementer" phase_id="fix-mobile-viewport-input-and-layout" pair="implement" turn_seq="1" run_id="run-20260326T185419Z-43988099" ts="2026-03-26T18:57:15.034159+00:00" />
+Two-touch pinch cancels only an in-progress zone drag via the existing `cancelDraft()` path; click and inspect-orbit suppression is handled locally with per-pointer pinch suppression so road/tram drafts are not discarded.
+Vitest now excludes `tests/e2e/**`, and Playwright timeout is raised to 90s so `npm test` and `npm run test:e2e` remain distinct and complete reliably in this workspace after adding the mobile viewport coverage.

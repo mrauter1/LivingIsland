@@ -1,0 +1,220 @@
+:root {
+  color: #f8f5ec;
+  background:
+    radial-gradient(circle at top, rgba(255, 227, 177, 0.12), transparent 36%),
+    linear-gradient(180deg, #17324f 0%, #0e1726 56%, #05080d 100%);
+  font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+  min-width: 1280px;
+}
+
+body {
+  min-height: 100vh;
+}
+
+button {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(8, 16, 25, 0.55);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0.55rem 0.9rem;
+}
+
+button.active {
+  background: rgba(117, 188, 255, 0.18);
+  border-color: rgba(117, 188, 255, 0.5);
+}
+
+.app-shell {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: 260px minmax(640px, 1fr) 300px;
+  grid-template-rows: auto 1fr auto;
+  min-height: 100vh;
+  padding: 0.75rem;
+}
+
+.app-shell.hud-hidden {
+  grid-template-columns: minmax(640px, 1fr);
+}
+
+.panel {
+  backdrop-filter: blur(18px);
+  background: rgba(4, 10, 18, 0.58);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.28);
+}
+
+.top-bar {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  grid-column: 1 / -1;
+  justify-content: space-between;
+  padding: 1rem 1.2rem;
+}
+
+.top-bar > div {
+  align-items: center;
+  display: flex;
+  gap: 0.8rem;
+}
+
+.toolbar-row {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.left-panel,
+.right-panel {
+  padding: 1rem;
+}
+
+.left-panel h2,
+.right-panel h2,
+.left-panel h3 {
+  margin: 0 0 0.75rem;
+}
+
+.stack {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.build-help {
+  color: rgba(248, 245, 236, 0.76);
+  font-size: 0.92rem;
+}
+
+.world-shell {
+  min-height: 70vh;
+  position: relative;
+}
+
+.world-viewport {
+  border-radius: 28px;
+  height: 100%;
+  min-height: 680px;
+  overflow: hidden;
+  position: relative;
+}
+
+.world-viewport.interactive {
+  touch-action: none;
+}
+
+.world-canvas {
+  height: 100%;
+  width: 100%;
+}
+
+.world-canvas canvas {
+  display: block;
+}
+
+.world-overlay {
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.preview-zone,
+.selection-shape {
+  fill: rgba(136, 214, 177, 0.18);
+  stroke: rgba(182, 255, 224, 0.95);
+  stroke-width: 2;
+}
+
+.preview-zone.invalid {
+  fill: rgba(255, 143, 125, 0.16);
+  stroke: rgba(255, 161, 144, 0.95);
+}
+
+.preview-invalid {
+  fill: rgba(255, 110, 88, 0.2);
+  stroke: rgba(255, 164, 147, 0.85);
+  stroke-width: 1.5;
+}
+
+.preview-path,
+.selection-path {
+  fill: none;
+  stroke: rgba(184, 242, 255, 0.92);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 4;
+}
+
+.preview-path.invalid {
+  stroke: rgba(255, 150, 135, 0.95);
+}
+
+.selection-shape,
+.selection-path {
+  stroke: rgba(255, 236, 162, 0.95);
+}
+
+.overlay-legend {
+  background: rgba(6, 12, 20, 0.75);
+  border-radius: 999px;
+  bottom: 1rem;
+  padding: 0.5rem 0.85rem;
+  position: absolute;
+  right: 1rem;
+}
+
+.bottom-strip {
+  display: grid;
+  gap: 0.75rem;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 0.85rem;
+}
+
+.timeline-entry {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 18px;
+  display: grid;
+  gap: 0.25rem;
+  min-height: 84px;
+  padding: 0.85rem;
+}
+
+.debug-panel {
+  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  bottom: 1rem;
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.85rem;
+  position: fixed;
+  right: 1rem;
+  z-index: 20;
+}
+
+.error-text {
+  color: #ffb8a4;
+}
+
+@media (max-width: 1440px) {
+  .app-shell {
+    grid-template-columns: 220px minmax(600px, 1fr) 260px;
+  }
+}

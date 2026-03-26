@@ -4,8 +4,10 @@ import type { RendererFrameInput } from "../../simulation/core/contracts";
 import { useAppStore } from "../../app/store/appStore";
 
 const rendererSpies = vi.hoisted(() => ({
+  constructorError: null as Error | null,
   disposeCalls: 0,
   renderCalls: [] as RendererFrameInput[],
+  renderErrorOnCall: null as number | null,
   resizeCalls: 0,
 }));
 
@@ -13,6 +15,9 @@ vi.mock("../../world/rendering/WorldRenderer", () => ({
   WorldRenderer: class {
     constructor(container: HTMLElement) {
       void container;
+      if (rendererSpies.constructorError) {
+        throw rendererSpies.constructorError;
+      }
     }
 
     resize(): void {
@@ -20,6 +25,10 @@ vi.mock("../../world/rendering/WorldRenderer", () => ({
     }
 
     render(frame: RendererFrameInput): void {
+      const callIndex = rendererSpies.renderCalls.length + 1;
+      if (rendererSpies.renderErrorOnCall === callIndex) {
+        throw new Error("render failed");
+      }
       rendererSpies.renderCalls.push(frame);
     }
 
@@ -37,8 +46,10 @@ describe("WorldViewport", () => {
   let originalGetBoundingClientRect: PropertyDescriptor | undefined;
 
   beforeEach(() => {
+    rendererSpies.constructorError = null;
     rendererSpies.disposeCalls = 0;
     rendererSpies.renderCalls.length = 0;
+    rendererSpies.renderErrorOnCall = null;
     rendererSpies.resizeCalls = 0;
     useAppStore.getState().newWorld("viewport-seed");
     useAppStore.setState({ overlay: "none" });
@@ -233,5 +244,33 @@ describe("WorldViewport", () => {
     expect(setPointerCapture).toHaveBeenCalledWith(7);
     expect(hasPointerCapture).toHaveBeenCalledWith(7);
     expect(releasePointerCapture).toHaveBeenCalledWith(7);
+  });
+
+  it("keeps UI available and displays a fallback surface when renderer construction fails", () => {
+    rendererSpies.constructorError = new Error("webgl init failed");
+
+    const { container } = render(<WorldViewport />);
+
+    expect(container.querySelector(".world-canvas-error")?.textContent).toContain("3D viewport unavailable");
+    expect(container.querySelector(".world-overlay")).not.toBeNull();
+    expect(window.requestAnimationFrame).not.toHaveBeenCalled();
+  });
+
+  it("stops the render loop and shows fallback surface when rendering throws", () => {
+    rendererSpies.renderErrorOnCall = 2;
+    const { container } = render(<WorldViewport />);
+
+    const firstFrame = frameCallbacks.get(1);
+    act(() => {
+      firstFrame?.(100);
+    });
+    const secondFrame = frameCallbacks.get(2);
+    act(() => {
+      secondFrame?.(116);
+    });
+
+    expect(rendererSpies.renderCalls).toHaveLength(1);
+    expect(window.requestAnimationFrame).toHaveBeenCalledTimes(2);
+    expect(container.querySelector(".world-canvas-error")?.textContent).toContain("3D viewport unavailable");
   });
 });

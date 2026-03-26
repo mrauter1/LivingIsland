@@ -1,0 +1,188 @@
+version: 1
+task_id: implement-the-product-described-in-livingislandp-b504c0f3
+request_snapshot_ref: /workspace/LivingIsland/.autoloop/tasks/implement-the-product-described-in-livingislandp-b504c0f3/runs/run-20260325T230425Z-d617c309/request.md
+phases:
+  - phase_id: foundation-domain-model
+    title: Foundation and domain model
+    objective: Create the greenfield app scaffold and canonical data contracts that anchor deterministic simulation, rendering separation, and editor actions.
+    status: planned
+    in_scope:
+      - Set up Vite, React, TypeScript, Three.js, Zustand, lint/test basics, and the PRD-aligned source tree.
+      - Define shared types for world tiles, districts, utilities, transport, events, overlays, camera state, and save payloads.
+      - Establish the single client state/store boundary and pure simulation/render interface contracts.
+    out_of_scope:
+      - Final visual polish
+      - Full simulation behavior
+      - Browser compatibility tuning beyond bootability
+    dependencies: []
+    acceptance_criteria:
+      - id: AC-1
+        text: The repository boots as a browser app with the required source structure and no backend dependencies.
+      - id: AC-2
+        text: Simulation-facing types and editor action contracts cover all P0 entities and placement modes from the PRD.
+      - id: AC-3
+        text: Simulation modules are isolated from rendering dependencies by interface rather than convention alone.
+    deliverables:
+      - App scaffold and dependency baseline
+      - Canonical P0 type definitions and state contracts
+      - Initial store, routing shell, and test harness
+    risks:
+      - Over-designing abstractions in an empty repo
+      - Drifting from the PRD data model before implementation starts
+    rollback:
+      - Keep a minimal app shell and remove any unused abstractions that do not directly support P0 systems.
+  - phase_id: world-generation-and-rendering
+    title: Seeded world generation and base rendering
+    objective: Produce a deterministic, immediately legible island world with starter settlement data and the required cinematic environment.
+    status: planned
+    in_scope:
+      - Seeded terrain generation for a 128x128 tile grid with central buildable basin and terrain classification.
+      - Three.js world scene with stylized water, sky, clouds, lighting, day-night cycle, and emissive night lighting.
+      - Initial starter layout generation so the world appears alive on load.
+    out_of_scope:
+      - Full editing tools
+      - Event-specific disaster effects
+      - Final performance optimization
+    dependencies:
+      - foundation-domain-model
+    acceptance_criteria:
+      - id: AC-1
+        text: The same seed generates the same terrain and starter world layout.
+      - id: AC-2
+        text: Ten sampled seeds produce valid islands with at least one viable starter basin.
+      - id: AC-3
+        text: The initial world visually communicates island terrain, water, movement, and day-night lighting within seconds of load.
+    deliverables:
+      - Terrain generation pipeline
+      - Base world renderer and environment systems
+      - Starter world seeding logic
+    risks:
+      - Terrain rules failing to leave enough buildable land
+      - Visuals reading as a prototype instead of a diorama
+    rollback:
+      - Simplify terrain variation and decorative density while keeping deterministic island generation and starter viability intact.
+  - phase_id: editing-and-networks
+    title: Editing modes and infrastructure networks
+    objective: Implement the fixed interaction model for zoning, roads, tram, ferry, utilities, selection, and demolish with centralized validation.
+    status: planned
+    in_scope:
+      - Orbit camera controls, tool modes, keyboard shortcuts, selection, inspector targeting, and camera focus behavior.
+      - Rectangle zone placement, road graph editing, tram line creation with stops, dock placement and ferry routing, utility placement, and demolish actions.
+      - Shared validators for buildability, occupancy, coastline, graph connectivity, and footprint constraints.
+    out_of_scope:
+      - Full event logic
+      - Save/load UX
+      - Fine-grained animation polish
+    dependencies:
+      - foundation-domain-model
+      - world-generation-and-rendering
+    acceptance_criteria:
+      - id: AC-1
+        text: Each P0 build mode can place only valid entities according to the PRD's placement rules and rejects invalid placements predictably.
+      - id: AC-2
+        text: Selected districts, infrastructure, transit, and events route into a consistent inspector contract.
+      - id: AC-3
+        text: Demolish removes one selected entity or segment at a time without corrupting related state.
+    deliverables:
+      - Editor mode controllers and input handling
+      - Placement validation and mutation actions
+      - Inspect/select/demolish workflows
+    risks:
+      - Divergent validation logic across tool modes
+      - Edge cases around transit and road connectivity
+    rollback:
+      - Disable optional conveniences such as bridge support rather than weakening core placement validation rules.
+  - phase_id: simulation-events-and-motion
+    title: Simulation loop, events, and representative motion
+    objective: Implement the PRD's fixed simulation order, district/system formulas, weather, events, and aggregate actor behavior.
+    status: planned
+    in_scope:
+      - Tick loop, time controls, growth cadence, utility/service calculations, transport load simulation, district scoring, and growth or decline.
+      - Global weather state machine and P0 events for storm, blackout, traffic collapse, and fire with correct trigger and recovery rules.
+      - Representative actor targets and animations for cars, trams, ferries, clouds, rain, fire, and blackout presentation.
+    out_of_scope:
+      - P1 spatial weather fronts
+      - Individual citizen simulation
+      - Replay systems
+    dependencies:
+      - foundation-domain-model
+      - world-generation-and-rendering
+      - editing-and-networks
+    acceptance_criteria:
+      - id: AC-1
+        text: Simulation ticks follow the PRD's mandated update order and growth-check cadence.
+      - id: AC-2
+        text: Utility deficits, congestion, service coverage, and events produce visible and inspectable effects on district outcomes.
+      - id: AC-3
+        text: The world remains visibly alive through aggregate traffic, transit, weather, and lighting changes without per-citizen simulation.
+    deliverables:
+      - Simulation engine and derived metrics
+      - Weather and event systems
+      - Representative actor spawning and motion behaviors
+    risks:
+      - Formula drift from the PRD
+      - Simulation cost growing too high once all systems run together
+    rollback:
+      - Reduce actor density and visual spawn counts before cutting any required simulation rule.
+  - phase_id: ui-persistence-and-debug
+    title: HUD, overlays, persistence, and debug tooling
+    objective: Finish the product-facing controls and local persistence needed to operate, inspect, save, and reload the P0 world.
+    status: planned
+    in_scope:
+      - Desktop HUD layout, world stats, inspector states, event timeline, alerts, speed controls, photo mode, cinematic mode, and timelapse indicators.
+      - Traffic, power, water, and satisfaction overlays using shared derived data.
+      - IndexedDB autosave and 3 named manual save slots plus development-only debug panel diagnostics.
+    out_of_scope:
+      - Mobile editing parity
+      - Save migration support
+      - Export/import save files
+    dependencies:
+      - foundation-domain-model
+      - editing-and-networks
+      - simulation-events-and-motion
+    acceptance_criteria:
+      - id: AC-1
+        text: The desktop HUD exposes all required controls and hides cleanly in photo mode.
+      - id: AC-2
+        text: Autosave and 3 manual slots restore terrain, world state, simulation state, and active events reliably.
+      - id: AC-3
+        text: Overlay and debug values match the simulation's canonical derived metrics rather than recomputed UI-only logic.
+    deliverables:
+      - Final HUD and overlay systems
+      - IndexedDB save/load implementation
+      - Development debug panel
+    risks:
+      - Save payloads missing state needed for deterministic reload
+      - Overlay UI drifting from the actual simulation numbers
+    rollback:
+      - Trim non-essential UI ornamentation before reducing required controls or save fidelity.
+  - phase_id: polish-validation-and-hardening
+    title: Polish, validation, and hardening
+    objective: Tune the integrated slice to satisfy the PRD's visual, behavioral, and reliability bar without expanding scope.
+    status: planned
+    in_scope:
+      - Performance tuning, cross-browser smoke fixes, input polish, visual tuning, and QA against the PRD definitions of done.
+      - Determinism checks, save/load round-trip verification, and regression tests for formulas and event triggers.
+      - Final balancing of actor density, overlay readability, and cinematic/timelapse behavior.
+    out_of_scope:
+      - New gameplay systems
+      - Broader platform support guarantees
+      - P1 or P2 features
+    dependencies:
+      - ui-persistence-and-debug
+    acceptance_criteria:
+      - id: AC-1
+        text: The integrated slice meets the PRD's visual, simulation, and interaction success criteria for P0.
+      - id: AC-2
+        text: Core deterministic and round-trip persistence checks pass for representative seeds and scripted action sequences.
+      - id: AC-3
+        text: Chrome is production-ready and Safari/Firefox complete smoke-tested secondary support without blocking defects.
+    deliverables:
+      - Final tuning pass
+      - Validation checklist and regression coverage
+      - Release-ready P0 slice
+    risks:
+      - Late-stage polish revealing architectural weaknesses
+      - Browser-specific rendering differences
+    rollback:
+      - Prefer reducing decorative intensity or optional presentation details over changing core simulation or interaction contracts.

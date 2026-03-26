@@ -285,6 +285,11 @@ function trimTerminalDuplicateRoadPoints(path: TileCoord[]): TileCoord[] {
   return normalizedPath;
 }
 
+function findCreatedEntityId<T extends { id: string }>(before: readonly T[], after: readonly T[]): string | undefined {
+  const beforeIds = new Set(before.map((entity) => entity.id));
+  return after.find((entity) => !beforeIds.has(entity.id))?.id;
+}
+
 function previewForTram(world: WorldState, nodeIds: string[]): EditorPlacementPreview | undefined {
   const plan = planTramLine(world, nodeIds);
   return {
@@ -527,14 +532,15 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
         };
       }
 
-      const districtId = `district-${state.world.districts.length + 1}`;
+      const nextWorld = simulationKernel.applyEditorAction(state.world, {
+        type: "build_zone",
+        districtType: state.editor.activeDistrictType,
+        rect: preview.rect,
+      });
+      const districtId = findCreatedEntityId(state.world.districts, nextWorld.districts);
       return {
-        world: simulationKernel.applyEditorAction(state.world, {
-          type: "build_zone",
-          districtType: state.editor.activeDistrictType,
-          rect: preview.rect,
-        }),
-        selection: { kind: "district", entityId: districtId },
+        world: nextWorld,
+        selection: districtId ? { kind: "district", entityId: districtId } : state.selection,
         editor: {
           ...state.editor,
           zoneDragStart: undefined,
@@ -573,13 +579,14 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
             },
           };
         }
-        const roadId = `road-edge-${state.world.roadEdges.length + 1}`;
+        const nextWorld = simulationKernel.applyEditorAction(state.world, {
+          type: "build_road",
+          path: roadPath,
+        });
+        const roadId = findCreatedEntityId(state.world.roadEdges, nextWorld.roadEdges);
         return {
-          world: simulationKernel.applyEditorAction(state.world, {
-            type: "build_road",
-            path: roadPath,
-          }),
-          selection: { kind: "road_edge", entityId: roadId },
+          world: nextWorld,
+          selection: roadId ? { kind: "road_edge", entityId: roadId } : state.selection,
           editor: {
             ...state.editor,
             roadDraft: [],
@@ -618,15 +625,15 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
             stopIds.push(createdStop.id);
           }
         }
-
-        const lineId = `tram-line-${workingWorld.tramLines.length + 1}`;
+        const nextWorld = simulationKernel.applyEditorAction(workingWorld, {
+          type: "build_tram",
+          stopIds,
+          edgeIds: plan.edgeIds,
+        });
+        const lineId = findCreatedEntityId(workingWorld.tramLines, nextWorld.tramLines);
         return {
-          world: simulationKernel.applyEditorAction(workingWorld, {
-            type: "build_tram",
-            stopIds,
-            edgeIds: plan.edgeIds,
-          }),
-          selection: { kind: "tram_line", entityId: lineId },
+          world: nextWorld,
+          selection: lineId ? { kind: "tram_line", entityId: lineId } : state.selection,
           editor: {
             ...state.editor,
             tramDraftNodeIds: [],
@@ -751,14 +758,14 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
               },
             };
           }
-
-          const routeId = `ferry-route-${workingWorld.ferryRoutes.length + 1}`;
+          const nextWorld = simulationKernel.applyEditorAction(workingWorld, {
+            type: "build_ferry",
+            dockIds: [nextDockIds[0]!, nextDockIds[1]!],
+          });
+          const routeId = findCreatedEntityId(workingWorld.ferryRoutes, nextWorld.ferryRoutes);
           return {
-            world: simulationKernel.applyEditorAction(workingWorld, {
-              type: "build_ferry",
-              dockIds: [nextDockIds[0]!, nextDockIds[1]!],
-            }),
-            selection: { kind: "ferry_route", entityId: routeId },
+            world: nextWorld,
+            selection: routeId ? { kind: "ferry_route", entityId: routeId } : state.selection,
             editor: {
               ...state.editor,
               ferryDraftDockIds: [],
@@ -778,14 +785,15 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
               },
             };
           }
-          const utilityId = `utility-${state.world.utilities.length + 1}`;
+          const nextWorld = simulationKernel.applyEditorAction(state.world, {
+            type: "place_utility",
+            utilityType: state.editor.activeUtilityType,
+            origin: tile,
+          });
+          const utilityId = findCreatedEntityId(state.world.utilities, nextWorld.utilities);
           return {
-            world: simulationKernel.applyEditorAction(state.world, {
-              type: "place_utility",
-              utilityType: state.editor.activeUtilityType,
-              origin: tile,
-            }),
-            selection: { kind: "utility", entityId: utilityId },
+            world: nextWorld,
+            selection: utilityId ? { kind: "utility", entityId: utilityId } : state.selection,
             editor: {
               ...state.editor,
               preview,

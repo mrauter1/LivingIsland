@@ -1,0 +1,37 @@
+version: 1
+task_id: analyze-the-provided-automated-review-comments-f-6dd4d29d
+request_snapshot_ref: /workspace/LivingIsland/.autoloop/tasks/analyze-the-provided-automated-review-comments-f-6dd4d29d/runs/run-20260326T052956Z-8599ba76/request.md
+phases:
+  - phase_id: resolve-automated-review-comments
+    title: Resolve automated review comments
+    objective: Evaluate the externally supplied review comments, implement only validated suggestions with tests, and document rejected suggestions; currently blocked until the missing payload is provided.
+    status: blocked
+    in_scope:
+      - Acquire the missing automated review comment payload intended for this task.
+      - Map each review comment to the affected code path, behavior, and existing tests.
+      - Implement only the suggestions verified as correct and applicable.
+      - Add or update targeted tests for each accepted suggestion.
+      - Record concise rationale for each rejected or inapplicable suggestion in task artifacts.
+    out_of_scope:
+      - Speculative code changes without the actual review-comment payload.
+      - Unrelated refactors or cleanup not required by a validated comment.
+      - Intentional behavior, interface, or data-compatibility changes without explicit confirmation.
+    dependencies: []
+    acceptance_criteria:
+      - id: AC-1
+        text: The automated review comment payload is available and each comment is classified as accepted or rejected based on current code behavior.
+      - id: AC-2
+        text: Only accepted suggestions produce code changes, and each accepted suggestion has corresponding test coverage updates.
+      - id: AC-3
+        text: Each rejected or inapplicable suggestion has a concise artifact rationale, and no unrelated files are changed.
+    deliverables:
+      - A validated mapping from review comments to affected files and behaviors.
+      - Targeted code and test changes for accepted suggestions.
+      - Artifact notes documenting rejected suggestions and rationale.
+    risks:
+      - The task cannot proceed until the missing payload is supplied.
+      - Automated suggestions may misread repository intent and require rejection to avoid regressions.
+      - Nearby behavior may lack direct tests and require focused coverage before safe implementation.
+    rollback:
+      - Revert only the code and tests tied to an accepted suggestion if validation fails.
+      - Rebuild the comment-to-code mapping if a later-provided payload differs from the expected source.

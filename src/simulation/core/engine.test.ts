@@ -1,8 +1,30 @@
 import { describe, expect, it } from "vitest";
-import { GROWTH_CHECK_INTERVAL, SIMULATION_UPDATE_ORDER, WORLD_GRID_SIZE } from "./constants";
+import { GROWTH_CHECK_INTERVAL, SIMULATION_UPDATE_ORDER, TICKS_PER_HOUR, WORLD_GRID_SIZE } from "./constants";
 import { simulationKernel } from "./engine";
 import { isSavePayload } from "../../persistence/saveSchema";
 import { getTile } from "../../world/terrain/terrain";
+
+function findEmptyRect(world: ReturnType<typeof simulationKernel.createInitialWorld>, width: number, height: number) {
+  for (let y = 0; y <= world.terrain.height - height; y += 1) {
+    for (let x = 0; x <= world.terrain.width - width; x += 1) {
+      let valid = true;
+      for (let dy = 0; dy < height && valid; dy += 1) {
+        for (let dx = 0; dx < width; dx += 1) {
+          const tile = getTile(world.terrain, x + dx, y + dy);
+          if (!tile?.isBuildable || tile.districtId || tile.utilityId) {
+            valid = false;
+            break;
+          }
+        }
+      }
+      if (valid) {
+        return { x, y };
+      }
+    }
+  }
+
+  throw new Error(`Expected to find an empty ${width}x${height} rect.`);
+}
 
 function findBuildableRoadSegment(world: ReturnType<typeof simulationKernel.createInitialWorld>) {
   for (let y = 2; y < world.terrain.height - 2; y += 1) {
@@ -34,6 +56,27 @@ function findBuildableRoadSegment(world: ReturnType<typeof simulationKernel.crea
   }
 
   throw new Error("Expected a buildable road segment on the starter island.");
+}
+
+function syncNextIds(world: ReturnType<typeof simulationKernel.createInitialWorld>) {
+  const highestSuffix = (prefix: string, ids: string[]) =>
+    ids.reduce((highest, id) => {
+      const match = new RegExp(`^${prefix}-(\\d+)$`).exec(id);
+      return match ? Math.max(highest, Number.parseInt(match[1] ?? "", 10)) : highest;
+    }, 0);
+
+  world.runtime.nextIds = {
+    district: highestSuffix("district", world.districts.map((district) => district.id)),
+    utility: highestSuffix("utility", world.utilities.map((utility) => utility.id)),
+    "road-node": highestSuffix("road-node", world.roadNodes.map((node) => node.id)),
+    "road-edge": highestSuffix("road-edge", world.roadEdges.map((edge) => edge.id)),
+    "tram-stop": highestSuffix("tram-stop", world.tramStops.map((stop) => stop.id)),
+    "tram-line": highestSuffix("tram-line", world.tramLines.map((line) => line.id)),
+    "ferry-dock": highestSuffix("ferry-dock", world.ferryDocks.map((dock) => dock.id)),
+    "ferry-route": highestSuffix("ferry-route", world.ferryRoutes.map((route) => route.id)),
+    event: highestSuffix("event", world.events.map((event) => event.id)),
+  };
+  return world;
 }
 
 describe("simulation kernel contracts", () => {
@@ -71,6 +114,24 @@ describe("simulation kernel contracts", () => {
     ).toBe(false);
     expect(hydrated.metadata.seed).toBe("kernel-seed");
     expect(hydrated.districts).toHaveLength(world.districts.length);
+    expect(hydrated.runtime.nextIds).toEqual(world.runtime.nextIds);
+  });
+
+  it("hydrates older saves without persisted next-id state by deriving live suffixes", () => {
+    const world = simulationKernel.createInitialWorld("legacy-save-seed");
+    const payload = JSON.parse(JSON.stringify(simulationKernel.serializeSave(world, "slot-1")));
+    delete payload.state.runtime.nextIds;
+
+    const hydrated = simulationKernel.hydrateSave(payload);
+    const origin = findEmptyRect(hydrated, 4, 4);
+    const rebuiltWorld = simulationKernel.applyEditorAction(hydrated, {
+      type: "build_zone",
+      districtType: "residential",
+      rect: { x: origin.x, y: origin.y, width: 4, height: 4 },
+    });
+
+    expect(hydrated.runtime.nextIds.district).toBe(5);
+    expect(rebuiltWorld.districts.at(-1)?.id).toBe("district-6");
   });
 
   it("continues deterministically after a scripted save and reload sequence", () => {
@@ -168,6 +229,94 @@ describe("simulation kernel contracts", () => {
     expect(intersectionNode?.connectedEdgeIds).toHaveLength(2);
   });
 
+  it("allocates fresh editor ids after deleted districts and roads", () => {
+    const zoningWorld = simulationKernel.createInitialWorld("editor-id-seed");
+    const deletedDistrictWorld = simulationKernel.applyEditorAction(zoningWorld, {
+      type: "demolish_entity",
+      entityKind: "district",
+      entityId: "district-5",
+    });
+    const origin = findEmptyRect(deletedDistrictWorld, 4, 4);
+    const rebuiltDistrictWorld = simulationKernel.applyEditorAction(deletedDistrictWorld, {
+      type: "build_zone",
+      districtType: "residential",
+      rect: { x: origin.x, y: origin.y, width: 4, height: 4 },
+    });
+
+    expect(rebuiltDistrictWorld.districts.at(-1)?.id).toBe("district-6");
+
+    const roadWorld = simulationKernel.createInitialWorld("road-id-seed");
+    roadWorld.roadNodes = [];
+    roadWorld.roadEdges = [];
+    roadWorld.tramStops = [];
+    roadWorld.tramLines = [];
+    roadWorld.ferryDocks = [];
+    roadWorld.ferryRoutes = [];
+    syncNextIds(roadWorld);
+    const segment = findBuildableRoadSegment(roadWorld).horizontal;
+
+    const firstRoadWorld = simulationKernel.applyEditorAction(roadWorld, {
+      type: "build_road",
+      path: segment,
+    });
+    const demolishedRoadWorld = simulationKernel.applyEditorAction(firstRoadWorld, {
+      type: "demolish_entity",
+      entityKind: "road_edge",
+      entityId: firstRoadWorld.roadEdges[0]!.id,
+    });
+    const rebuiltRoadWorld = simulationKernel.applyEditorAction(demolishedRoadWorld, {
+      type: "build_road",
+      path: segment,
+    });
+
+    expect(rebuiltRoadWorld.roadEdges.map((edge) => edge.id)).toEqual(["road-edge-2"]);
+    expect(rebuiltRoadWorld.roadNodes.map((node) => node.id)).toEqual(["road-node-3", "road-node-4"]);
+  });
+
+  it("persists next-id state across cold save loads for deleted entities and expired events", () => {
+    const zoningWorld = simulationKernel.createInitialWorld("persisted-id-seed");
+    const deletedDistrictWorld = simulationKernel.applyEditorAction(zoningWorld, {
+      type: "demolish_entity",
+      entityKind: "district",
+      entityId: "district-5",
+    });
+    const deletedDistrictPayload = JSON.parse(JSON.stringify(simulationKernel.serializeSave(deletedDistrictWorld, "slot-1")));
+    const reloadedDistrictWorld = simulationKernel.hydrateSave(deletedDistrictPayload);
+    const origin = findEmptyRect(reloadedDistrictWorld, 4, 4);
+    const rebuiltDistrictWorld = simulationKernel.applyEditorAction(reloadedDistrictWorld, {
+      type: "build_zone",
+      districtType: "residential",
+      rect: { x: origin.x, y: origin.y, width: 4, height: 4 },
+    });
+
+    expect(rebuiltDistrictWorld.districts.at(-1)?.id).toBe("district-6");
+
+    const eventWorld = simulationKernel.createInitialWorld("persisted-event-id-seed");
+    eventWorld.weather.state = "clear";
+    eventWorld.weather.remainingTicks = 12;
+    eventWorld.runtime.highCongestionTicks = 23;
+    eventWorld.traffic.highTrafficAverageCongestion = 0.91;
+
+    const firstCollapseWorld = simulationKernel.stepWorld(eventWorld, 1, { speed: 1 });
+    expect(firstCollapseWorld.events.map((event) => event.id)).toContain("event-1");
+
+    firstCollapseWorld.events[0]!.endTick = firstCollapseWorld.clock.tick;
+    firstCollapseWorld.runtime.highCongestionTicks = 0;
+    firstCollapseWorld.traffic.highTrafficAverageCongestion = 0;
+
+    const clearedEventWorld = simulationKernel.stepWorld(firstCollapseWorld, 1, { speed: 1 });
+    expect(clearedEventWorld.events).toHaveLength(0);
+
+    const clearedEventPayload = JSON.parse(JSON.stringify(simulationKernel.serializeSave(clearedEventWorld, "slot-1")));
+    const reloadedEventWorld = simulationKernel.hydrateSave(clearedEventPayload);
+    reloadedEventWorld.runtime.highCongestionTicks = 23;
+    reloadedEventWorld.traffic.highTrafficAverageCongestion = 0.91;
+
+    const secondCollapseWorld = simulationKernel.stepWorld(reloadedEventWorld, 1, { speed: 1 });
+
+    expect(secondCollapseWorld.events.map((event) => event.id)).toContain("event-2");
+  });
+
   it("removes demolished road-edge adjacency while preserving nodes still referenced by transit entities", () => {
     const world = simulationKernel.createInitialWorld("road-demolish-seed");
     world.roadNodes = [];
@@ -176,6 +325,7 @@ describe("simulation kernel contracts", () => {
     world.tramLines = [];
     world.ferryDocks = [];
     world.ferryRoutes = [];
+    syncNextIds(world);
     const segment = findBuildableRoadSegment(world);
 
     const withRoad = simulationKernel.applyEditorAction(world, {
@@ -228,6 +378,7 @@ describe("simulation kernel contracts", () => {
     world.ferryDocks = [];
     world.tramLines = [];
     world.ferryRoutes = [];
+    syncNextIds(world);
 
     const withFirstStop = simulationKernel.applyEditorAction(world, {
       type: "place_tram_stop",
@@ -330,6 +481,26 @@ describe("simulation kernel contracts", () => {
     ).toBe(true);
   });
 
+  it("allocates fresh runtime event ids after earlier events expire", () => {
+    const world = simulationKernel.createInitialWorld("event-id-seed");
+    world.weather.state = "clear";
+    world.weather.remainingTicks = 12;
+    world.runtime.highCongestionTicks = 23;
+    world.traffic.highTrafficAverageCongestion = 0.91;
+
+    const firstCollapseWorld = simulationKernel.stepWorld(world, 1, { speed: 1 });
+    expect(firstCollapseWorld.events.map((event) => event.id)).toContain("event-1");
+
+    firstCollapseWorld.events[0]!.endTick = firstCollapseWorld.clock.tick;
+    firstCollapseWorld.runtime.highCongestionTicks = 23;
+    firstCollapseWorld.traffic.highTrafficAverageCongestion = 0.91;
+
+    const secondCollapseWorld = simulationKernel.stepWorld(firstCollapseWorld, 1, { speed: 1 });
+
+    expect(secondCollapseWorld.events.map((event) => event.id)).toContain("event-2");
+    expect(secondCollapseWorld.events.map((event) => event.id)).not.toContain("event-1");
+  });
+
   it("triggers traffic collapse after sustained severe congestion", () => {
     const world = simulationKernel.createInitialWorld("traffic-collapse-seed");
     world.runtime.highCongestionTicks = 23;
@@ -368,6 +539,26 @@ describe("simulation kernel contracts", () => {
     expect(batched).toEqual(repeated);
     expect(batched.events.some((event) => event.type === "blackout")).toBe(true);
     expect(batched.events.some((event) => event.type === "traffic_collapse")).toBe(true);
+  });
+
+  it("advances from day 1 08:00 and rolls over the next day at midnight", () => {
+    const world = simulationKernel.createInitialWorld("clock-seed");
+
+    const firstTickWorld = simulationKernel.stepWorld(world, 1, { speed: 1 });
+    expect(firstTickWorld.clock).toMatchObject({
+      tick: 1,
+      day: 1,
+      hour: 8,
+      minute: 15,
+    });
+
+    const midnightWorld = simulationKernel.stepWorld(world, (24 - world.clock.hour) * TICKS_PER_HOUR, { speed: 1 });
+    expect(midnightWorld.clock).toMatchObject({
+      day: 2,
+      hour: 0,
+      minute: 0,
+    });
+    expect(midnightWorld.timeline.some((entry) => entry.title === "Day 2" && entry.tick === midnightWorld.clock.tick)).toBe(true);
   });
 
   it("reduces ferry transport contribution during storms", () => {

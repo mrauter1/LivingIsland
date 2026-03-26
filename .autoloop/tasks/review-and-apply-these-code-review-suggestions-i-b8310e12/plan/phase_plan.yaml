@@ -1,0 +1,43 @@
+version: 1
+task_id: review-and-apply-these-code-review-suggestions-i-b8310e12
+request_snapshot_ref: /workspace/LivingIsland/.autoloop/tasks/review-and-apply-these-code-review-suggestions-i-b8310e12/runs/run-20260326T053253Z-9f27043d/request.md
+phases:
+  - phase_id: fix-valid-review-findings
+    title: Apply validated engine and repo hygiene fixes
+    objective: Implement the correct review suggestions with regression coverage while rejecting unnecessary refactor scope.
+    status: planned
+    in_scope:
+      - Replace length-based engine ID allocation with monotonic unique suffix allocation that preserves existing ID format.
+      - Update dependent app-store selection paths that currently predict new IDs from collection length.
+      - Preserve the generated world clock offset when stepping simulation time.
+      - Remove stale `.gitignore` entries for nonexistent Vite config outputs.
+      - Add focused simulation and store regression tests for the accepted fixes.
+      - Document the rejected standalone `handleWorldClick` refactor rationale in artifacts.
+    out_of_scope:
+      - Broad maintainability refactors of `handleWorldClick` or other editor workflows without a demonstrated correctness need.
+      - Save-schema or public ID-format changes beyond monotonic suffix allocation.
+      - Unrelated cleanup outside the files and behaviors touched by the accepted fixes.
+    dependencies: []
+    acceptance_criteria:
+      - id: AC-1
+        text: Engine-created entity IDs remain `prefix-<number>` strings and do not reuse prior IDs after same-type deletions.
+      - id: AC-2
+        text: Store selections after creating entities still resolve to the actual created entities, including paths affected by the ID-generation fix.
+      - id: AC-3
+        text: A new world steps from Day 1 08:00 to Day 1 08:15 on the first tick, and preserved-offset rollover behavior is covered by tests.
+      - id: AC-4
+        text: `.gitignore` no longer contains the stale `vite.config.js` and `vite.config.d.ts` entries unless implementation finds a real generator for them.
+      - id: AC-5
+        text: Plan artifacts clearly state that a standalone `handleWorldClick` refactor was analyzed and rejected as unnecessary risk.
+    deliverables:
+      - Updated engine and store code for the accepted fixes.
+      - Regression tests covering ID uniqueness, clock progression, and affected store selection behavior.
+      - Updated planning artifacts documenting accepted and rejected suggestions.
+    risks:
+      - Store selection can silently regress if it continues to predict IDs instead of reading the created entity from post-action state.
+      - Clock-offset preservation can break day/hour rollover if elapsed-tick math is adjusted inconsistently.
+      - Overreaching into a large store refactor would add avoidable editor regressions.
+    rollback:
+      - Revert engine ID allocation and dependent store selection changes together.
+      - Revert clock-offset logic together with the new timing regression tests if downstream timing assumptions fail.
+      - Restore `.gitignore` entries only if a confirmed repository workflow generates those files.

@@ -241,6 +241,17 @@ export interface SimulationRuntimeState {
   severePowerDeficitTicks: number;
   highCongestionTicks: number;
   recoveredCongestionTicks: number;
+  nextIds: {
+    district: number;
+    utility: number;
+    "road-node": number;
+    "road-edge": number;
+    "tram-stop": number;
+    "tram-line": number;
+    "ferry-dock": number;
+    "ferry-route": number;
+    event: number;
+  };
 }
 
 export interface WorldMetadata {

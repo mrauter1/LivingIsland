@@ -12,7 +12,6 @@ import {
   PARK_SERVICE_RADIUS,
   SEVERE_CONGESTION_THRESHOLD,
   SIMULATION_UPDATE_ORDER,
-  TICKS_PER_DAY,
   TICKS_PER_HOUR,
   TRAFFIC_COLLAPSE_RECOVERY_THRESHOLD,
   TRAFFIC_COLLAPSE_RECOVERY_TICKS,
@@ -106,6 +105,39 @@ type TickContext = {
   pendingTimelineEntries: TimelineEntry[];
 };
 
+type ManagedIdPrefix = keyof WorldState["runtime"]["nextIds"];
+
+function nextIdSuffix(prefix: string, id: string): number | undefined {
+  const match = new RegExp(`^${prefix}-(\\d+)$`).exec(id);
+  return match ? Number.parseInt(match[1] ?? "", 10) : undefined;
+}
+
+function highestIdSuffix(prefix: string, ids: readonly string[]): number {
+  return ids.reduce((highest, id) => {
+    const suffix = nextIdSuffix(prefix, id);
+    return suffix === undefined ? highest : Math.max(highest, suffix);
+  }, 0);
+}
+
+function deriveNextIds(state: WorldState): WorldState["runtime"]["nextIds"] {
+  return {
+    district: highestIdSuffix("district", state.districts.map((district) => district.id)),
+    utility: highestIdSuffix("utility", state.utilities.map((utility) => utility.id)),
+    "road-node": highestIdSuffix("road-node", state.roadNodes.map((node) => node.id)),
+    "road-edge": highestIdSuffix("road-edge", state.roadEdges.map((edge) => edge.id)),
+    "tram-stop": highestIdSuffix("tram-stop", state.tramStops.map((stop) => stop.id)),
+    "tram-line": highestIdSuffix("tram-line", state.tramLines.map((line) => line.id)),
+    "ferry-dock": highestIdSuffix("ferry-dock", state.ferryDocks.map((dock) => dock.id)),
+    "ferry-route": highestIdSuffix("ferry-route", state.ferryRoutes.map((route) => route.id)),
+    event: highestIdSuffix("event", state.events.map((event) => event.id)),
+  };
+}
+
+function getOrCreateNextIds(state: WorldState): WorldState["runtime"]["nextIds"] {
+  state.runtime.nextIds ??= deriveNextIds(state);
+  return state.runtime.nextIds;
+}
+
 function cloneWorld(state: WorldState): WorldState {
   return structuredClone(state);
 }
@@ -114,8 +146,12 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function nextId(prefix: string, currentCount: number): string {
-  return `${prefix}-${currentCount + 1}`;
+function nextId(state: WorldState, prefix: ManagedIdPrefix, ids: readonly string[]): string {
+  const nextIds = getOrCreateNextIds(state);
+  const highestLiveSuffix = highestIdSuffix(prefix, ids);
+  const nextSuffix = Math.max(nextIds[prefix], highestLiveSuffix) + 1;
+  nextIds[prefix] = nextSuffix;
+  return `${prefix}-${nextSuffix}`;
 }
 
 function formatClockLabel(state: WorldState): string {
@@ -242,7 +278,7 @@ function getOrCreateRoadNode(state: WorldState, coord: TileCoord): RoadNode {
 
   const terrainTile = getTile(state.terrain, coord.x, coord.y);
   const node: RoadNode = {
-    id: nextId("road-node", state.roadNodes.length),
+    id: nextId(state, "road-node", state.roadNodes.map((roadNode) => roadNode.id)),
     x: coord.x,
     y: coord.y,
     connectedEdgeIds: [],
@@ -706,7 +742,7 @@ function updateEventState(state: WorldState, context: TickContext): void {
   if (state.weather.state === "storm") {
     if (!stormEvent) {
       stormEvent = {
-        id: nextId("event", state.events.length),
+        id: nextId(state, "event", state.events.map((event) => event.id)),
         type: "storm",
         startTick: state.clock.tick,
         endTick: state.clock.tick + 1,
@@ -740,7 +776,7 @@ function updateEventState(state: WorldState, context: TickContext): void {
     const cause =
       state.runtime.severePowerDeficitTicks >= BLACKOUT_TRIGGER_TICKS ? "power" : "storm";
     const blackout = {
-      id: nextId("event", state.events.length),
+      id: nextId(state, "event", state.events.map((event) => event.id)),
       type: "blackout" as const,
       startTick: state.clock.tick,
       endTick: state.clock.tick + 12 + Math.floor(randomForTick(state, "blackout-duration") * 25),
@@ -763,7 +799,7 @@ function updateEventState(state: WorldState, context: TickContext): void {
     state.runtime.highCongestionTicks >= TRAFFIC_COLLAPSE_TRIGGER_TICKS
   ) {
     state.events.push({
-      id: nextId("event", state.events.length),
+      id: nextId(state, "event", state.events.map((event) => event.id)),
       type: "traffic_collapse",
       startTick: state.clock.tick,
       endTick: state.clock.tick + 10_000,
@@ -803,7 +839,7 @@ function updateEventState(state: WorldState, context: TickContext): void {
     const minDuration = district.serviceCoverage.fireCoverage ? 8 : 16;
     const maxDuration = district.serviceCoverage.fireCoverage ? 16 : 32;
     state.events.push({
-      id: nextId("event", state.events.length),
+      id: nextId(state, "event", state.events.map((event) => event.id)),
       type: "fire",
       startTick: state.clock.tick,
       endTick: state.clock.tick + minDuration + Math.floor(randomForTick(state, `fire-duration:${district.id}`) * (maxDuration - minDuration + 1)),
@@ -1050,7 +1086,7 @@ function updateActorTargets(state: WorldState, config: SimConfig): void {
 }
 
 function finalizeTimeline(state: WorldState, context: TickContext): void {
-  if (state.clock.tick % TICKS_PER_DAY === 0) {
+  if (state.clock.hour === 0 && state.clock.minute === 0) {
     context.pendingTimelineEntries.push({
       id: `timeline-${state.clock.tick}-day`,
       tick: state.clock.tick,
@@ -1069,13 +1105,18 @@ function finalizeTimeline(state: WorldState, context: TickContext): void {
 
 function updateClock(state: WorldState): void {
   const totalTicks = state.clock.tick + 1;
-  const day = Math.floor(totalTicks / TICKS_PER_DAY) + 1;
-  const dayTick = totalTicks % TICKS_PER_DAY;
+  const totalMinutes =
+    (state.clock.day - 1) * 24 * 60 +
+    state.clock.hour * 60 +
+    state.clock.minute +
+    60 / TICKS_PER_HOUR;
+  const day = Math.floor(totalMinutes / (24 * 60)) + 1;
+  const dayMinutes = totalMinutes % (24 * 60);
   state.clock = {
     tick: totalTicks,
     day,
-    hour: Math.floor(dayTick / TICKS_PER_HOUR),
-    minute: (dayTick % TICKS_PER_HOUR) * 15,
+    hour: Math.floor(dayMinutes / 60),
+    minute: dayMinutes % 60,
   };
 }
 
@@ -1142,7 +1183,7 @@ function applyBuildZone(state: WorldState, action: Extract<EditorAction, { type:
   }
 
   const districtLevel = 1 as const;
-  const districtId = nextId("district", state.districts.length);
+  const districtId = nextId(state, "district", state.districts.map((district) => district.id));
   const metrics = levelMetrics(action.districtType, districtLevel);
   state.districts.push({
     id: districtId,
@@ -1188,7 +1229,7 @@ function applyPlaceUtility(state: WorldState, action: Extract<EditorAction, { ty
     return state;
   }
   const defaults = UTILITY_DEFAULTS[action.utilityType];
-  const utilityId = nextId("utility", state.utilities.length);
+  const utilityId = nextId(state, "utility", state.utilities.map((utility) => utility.id));
   state.utilities.push({
     id: utilityId,
     type: action.utilityType,
@@ -1219,7 +1260,7 @@ function applyBuildRoad(state: WorldState, action: Extract<EditorAction, { type:
     return state;
   }
 
-  const edgeId = nextId("road-edge", state.roadEdges.length);
+  const edgeId = nextId(state, "road-edge", state.roadEdges.map((edge) => edge.id));
   state.roadEdges.push({
     id: edgeId,
     fromNodeId: fromNode.id,
@@ -1248,7 +1289,7 @@ function applyPlaceTramStop(
     return state;
   }
   state.tramStops.push({
-    id: nextId("tram-stop", state.tramStops.length),
+    id: nextId(state, "tram-stop", state.tramStops.map((stop) => stop.id)),
     nodeId: action.nodeId,
   });
   return state;
@@ -1275,7 +1316,7 @@ function applyBuildTram(state: WorldState, action: Extract<EditorAction, { type:
     return state;
   }
   state.tramLines.push({
-    id: nextId("tram-line", state.tramLines.length),
+    id: nextId(state, "tram-line", state.tramLines.map((line) => line.id)),
     stopIds: action.stopIds,
     edgeIds: action.edgeIds,
     lineFrequency: 1,
@@ -1297,7 +1338,7 @@ function applyPlaceFerryDock(
     return state;
   }
   state.ferryDocks.push({
-    id: nextId("ferry-dock", state.ferryDocks.length),
+    id: nextId(state, "ferry-dock", state.ferryDocks.map((dock) => dock.id)),
     nodeId: node.id,
     position: { x: node.x, y: node.y },
   });
@@ -1316,7 +1357,7 @@ function applyBuildFerry(state: WorldState, action: Extract<EditorAction, { type
     return state;
   }
   state.ferryRoutes.push({
-    id: nextId("ferry-route", state.ferryRoutes.length),
+    id: nextId(state, "ferry-route", state.ferryRoutes.map((route) => route.id)),
     dockAId: dockA.id,
     dockBId: dockB.id,
     length: distanceBetween(dockA.position, dockB.position),
@@ -1513,6 +1554,8 @@ export const simulationKernel: SimulationKernel = {
   },
 
   hydrateSave(payload) {
-    return cloneWorld(payload.state);
+    const state = cloneWorld(payload.state);
+    state.runtime.nextIds ??= deriveNextIds(state);
+    return state;
   },
 };

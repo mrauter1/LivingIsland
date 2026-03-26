@@ -585,6 +585,17 @@ export function createInitialWorld(seed: string): WorldState {
       severePowerDeficitTicks: 0,
       highCongestionTicks: 0,
       recoveredCongestionTicks: 0,
+      nextIds: {
+        district: districts.length,
+        utility: utilities.length,
+        "road-node": roadNodes.length,
+        "road-edge": roadEdges.length,
+        "tram-stop": transit.tramStops.length,
+        "tram-line": transit.tramLines.length,
+        "ferry-dock": transit.ferryDocks.length,
+        "ferry-route": transit.ferryRoutes.length,
+        event: 0,
+      },
     },
     clock: {
       tick: 0,
